@@ -1,0 +1,28 @@
+#include "common/net.h"
+
+#include <assert.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+int main(void)
+{
+    int fds[2];
+    const char payload[] = "ping";
+    char buffer[32];
+    uint32_t len = 0u;
+
+    assert(socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+    assert(net_send_msg(fds[0], payload, (uint32_t)sizeof(payload)) == 0);
+    assert(net_recv_msg(fds[1], buffer, sizeof(buffer), &len) == 1);
+    assert(len == sizeof(payload));
+    assert(memcmp(buffer, payload, sizeof(payload)) == 0);
+
+    net_close(fds[0]);
+    net_close(fds[1]);
+
+    puts("test_net: ok");
+    return 0;
+}
