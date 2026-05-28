@@ -1,5 +1,6 @@
 #include "client/repl.h"
 #include "client/scanner.h"
+#include "client/server_api.h"
 #include "common/net.h"
 #include "common/protocol.h"
 
@@ -65,6 +66,7 @@ static int parse_unsigned(const char *text, unsigned *out)
 int main(int argc, char **argv)
 {
     repl_context_t ctx;
+    register_resp_t register_response;
     scan_result_t scan;
     int i;
 
@@ -111,10 +113,17 @@ int main(int argc, char **argv)
         memset(&scan, 0, sizeof(scan));
     }
     scanner_print_result(&scan);
-    printf("TODO: register %zu file(s) with server %s:%s\n",
-           scan.count,
-           ctx.server_ip,
-           ctx.server_port);
+
+    if (server_register_files(ctx.server_ip, ctx.server_port, ctx.data_port, &scan, &register_response) != 0) {
+        perror("server_register_files");
+        fprintf(stderr, "Warning: registration failed; continuing with local REPL.\n");
+    } else {
+        printf("Registered %zu file(s) with server %s:%s; received %u neighbor(s).\n",
+               scan.count,
+               ctx.server_ip,
+               ctx.server_port,
+               (unsigned)register_response.neighbor_count);
+    }
 
     return repl_run(&ctx) == 0 ? 0 : 1;
 }

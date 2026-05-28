@@ -28,6 +28,7 @@ CLIENT_OBJS := \
 	$(COMMON_OBJS) \
 	$(BUILD_DIR)/client/main.o \
 	$(BUILD_DIR)/client/repl.o \
+	$(BUILD_DIR)/client/server_api.o \
 	$(BUILD_DIR)/client/scanner.o \
 	$(BUILD_DIR)/transfer/sender.o \
 	$(BUILD_DIR)/transfer/receiver.o \

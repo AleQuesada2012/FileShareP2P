@@ -85,8 +85,9 @@ Current runtime limitations:
 |---|---|
 | Server registration handling | Stubbed in `server/query_handler.c` |
 | Server `FIND` handling | Stubbed in `server/query_handler.c` |
-| Client startup scan | Implemented locally, but registration is not sent yet |
-| REPL `find` commands | Parsed as TODO messages |
+| Client startup scan | Implemented locally, then sends a `REGISTER` request to the server |
+| REPL `find -s <name>` | Sends a central-server `FIND` request and prints returned `(S, H, IP, port, name)` results |
+| REPL `find -d <name>` / `find <name>` | Parsed, but distributed search and fallback remain TODO |
 | REPL `request` command | Parsed as TODO message |
 | Segmented transfer | Stubbed with `ENOSYS` |
 | Distributed search flood | Stubbed with `ENOSYS` |
@@ -115,7 +116,7 @@ Recommended next implementation work:
 | Owner | Next task |
 |---|---|
 | Student 1 | Implement `REGISTER` and `FIND` handling in `server/query_handler.c` using the frozen protocol |
-| Student 2 | Send client registration after scanning, then wire REPL `find -s` to the server |
+| Student 2 | Add the transfer listener thread and implement `request <S> <H>` segmented download flow |
 | Student 3 | Seed `search/neighbors.c` from `register_resp_t`, then implement flood receive/forward logic |
 
 Keep commits focused by ownership area. Changes to `common/` need extra care because all modules depend on it.
