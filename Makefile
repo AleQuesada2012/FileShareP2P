@@ -37,7 +37,8 @@ CLIENT_OBJS := \
 
 TEST_BINS := \
 	$(BUILD_DIR)/tests/unit/test_hash \
-	$(BUILD_DIR)/tests/unit/test_net
+	$(BUILD_DIR)/tests/unit/test_net \
+	$(BUILD_DIR)/tests/unit/test_protocol_roundtrip
 
 .PHONY: all server client test docs clean
 
@@ -60,6 +61,10 @@ $(BUILD_DIR)/tests/unit/test_hash: $(BUILD_DIR)/tests/unit/test_hash.o $(BUILD_D
 	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
 
 $(BUILD_DIR)/tests/unit/test_net: $(BUILD_DIR)/tests/unit/test_net.o $(BUILD_DIR)/common/net.o
+	@mkdir -p $(dir $@)
+	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
+
+$(BUILD_DIR)/tests/unit/test_protocol_roundtrip: $(BUILD_DIR)/tests/unit/test_protocol_roundtrip.o $(BUILD_DIR)/common/net.o
 	@mkdir -p $(dir $@)
 	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
 

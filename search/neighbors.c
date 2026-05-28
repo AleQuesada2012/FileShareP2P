@@ -39,7 +39,7 @@ int neighbors_add(neighbor_list_t *neighbors, const peer_entry_t *peer)
         if (strcmp(neighbors->peers[i].ip, peer->ip) == 0 &&
             neighbors->peers[i].data_port == peer->data_port) {
             neighbors->peers[i] = *peer;
-            neighbors->peers[i].last_seen = time(NULL);
+            neighbors->peers[i].last_seen_epoch = (uint64_t)time(NULL);
             return pthread_mutex_unlock(&neighbors->lock);
         }
     }
@@ -51,7 +51,7 @@ int neighbors_add(neighbor_list_t *neighbors, const peer_entry_t *peer)
     }
 
     neighbors->peers[neighbors->count] = *peer;
-    neighbors->peers[neighbors->count].last_seen = time(NULL);
+    neighbors->peers[neighbors->count].last_seen_epoch = (uint64_t)time(NULL);
     neighbors->count++;
 
     return pthread_mutex_unlock(&neighbors->lock);

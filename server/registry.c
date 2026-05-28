@@ -42,7 +42,7 @@ int registry_register_peer(registry_t *registry,
     size_t i;
     size_t slot = REGISTRY_MAX_PEERS;
     size_t copy_count;
-    time_t now;
+    uint64_t now;
 
     if (registry == NULL || ip == NULL || (files == NULL && file_count > 0u)) {
         errno = EINVAL;
@@ -71,10 +71,10 @@ int registry_register_peer(registry_t *registry,
         registry->peer_count++;
     }
 
-    now = time(NULL);
+    now = (uint64_t)time(NULL);
     copy_string(registry->peers[slot].peer.ip, sizeof(registry->peers[slot].peer.ip), ip);
     registry->peers[slot].peer.data_port = data_port;
-    registry->peers[slot].peer.last_seen = now;
+    registry->peers[slot].peer.last_seen_epoch = now;
 
     copy_count = file_count > P2P_MAX_FILES_PER_PEER ? P2P_MAX_FILES_PER_PEER : file_count;
     registry->peers[slot].file_count = copy_count;
