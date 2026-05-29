@@ -7,6 +7,7 @@
 #include <string.h>
 #include <unistd.h>
 
+/* Write the full fixture payload even if write(2) completes partially. */
 static void write_all_or_die(int fd, const void *data, size_t len)
 {
     const unsigned char *bytes = (const unsigned char *)data;
@@ -19,6 +20,7 @@ static void write_all_or_die(int fd, const void *data, size_t len)
     }
 }
 
+/* Create a temporary file containing the exact bytes the hash test needs. */
 static void make_temp_file(char path[], const void *data, size_t len)
 {
     int fd = mkstemp(path);
@@ -27,6 +29,7 @@ static void make_temp_file(char path[], const void *data, size_t len)
     assert(close(fd) == 0);
 }
 
+/* Verify file hashing agrees with in-memory hashing and is repeatable. */
 static void assert_file_hash(const void *payload, size_t payload_len)
 {
     char path[] = "/tmp/fs-p2p-hash-XXXXXX";
@@ -44,6 +47,7 @@ static void assert_file_hash(const void *payload, size_t payload_len)
     assert(unlink(path) == 0);
 }
 
+/* Missing files must fail cleanly instead of producing stale metadata. */
 static void test_missing_path(void)
 {
     char path[] = "/tmp/fs-p2p-hash-missing-XXXXXX";
@@ -68,17 +72,21 @@ int main(void)
     unsigned char large_payload[20000];
     size_t i;
 
+    /* Known-answer checks for FNV-1a constants and a small text payload. */
     assert(hash_bytes("", 0u) == FS_P2P_HASH_OFFSET_BASIS);
     assert(hash_bytes(payload, strlen(payload)) == UINT64_C(0xa430d84680aabd0b));
 
+    /* Invalid input should be reported through errno and a zero hash result. */
     errno = 0;
     assert(hash_bytes(NULL, 1u) == 0u);
     assert(errno == EINVAL);
 
+    /* Build a deterministic payload large enough to cross the file read buffer. */
     for (i = 0u; i < sizeof(large_payload); ++i) {
         large_payload[i] = (unsigned char)(i % 251u);
     }
 
+    /* Exercise empty, text, binary, and multi-buffer file hashing paths. */
     assert_file_hash("", 0u);
     assert_file_hash(payload, strlen(payload));
     assert_file_hash(binary_payload, sizeof(binary_payload));

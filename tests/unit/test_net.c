@@ -14,7 +14,13 @@ int main(void)
     char buffer[32];
     uint32_t len = 0u;
 
+    /*
+     * Use socketpair to test the message helpers without depending on an
+     * external server or a specific TCP port.
+     */
     assert(socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+
+    /* net_send_msg/net_recv_msg should preserve both frame length and bytes. */
     assert(net_send_msg(fds[0], payload, (uint32_t)sizeof(payload)) == 0);
     assert(net_recv_msg(fds[1], buffer, sizeof(buffer), &len) == 1);
     assert(len == sizeof(payload));
