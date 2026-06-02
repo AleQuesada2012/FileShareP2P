@@ -89,7 +89,9 @@ Current runtime limitations:
 | REPL `find -s <name>` | Sends a central-server `FIND` request and prints returned `(S, H, IP, port, name)` results |
 | REPL `find -d <name>` / `find <name>` | Parsed, but distributed search and fallback remain TODO |
 | REPL `request` command | Parsed as TODO message |
-| Segmented transfer | Stubbed with `ENOSYS` |
+| Incoming transfer listener | Starts on the client data port and accepts `TRANSFER_REQ` messages |
+| Transfer sender | Sends requested byte ranges as `TRANSFER_DATA` frames |
+| Transfer receiver / file assembly | Stubbed with `ENOSYS` |
 | Distributed search flood | Stubbed with `ENOSYS` |
 
 ## Protocol Contract
@@ -116,7 +118,7 @@ Recommended next implementation work:
 | Owner | Next task |
 |---|---|
 | Student 1 | Implement `REGISTER` and `FIND` handling in `server/query_handler.c` using the frozen protocol |
-| Student 2 | Add the transfer listener thread and implement `request <S> <H>` segmented download flow |
+| Student 2 | Implement `transfer_request` and wire `request <S> <H>` to segmented download and assembly |
 | Student 3 | Seed `search/neighbors.c` from `register_resp_t`, then implement flood receive/forward logic |
 
 Keep commits focused by ownership area. Changes to `common/` need extra care because all modules depend on it.

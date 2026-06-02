@@ -43,7 +43,8 @@ change it casually. Any protocol change affects all three students.
 | `client/server_api.c/h` | Student 2 | Client-side protocol calls to central server | Implements `REGISTER` and `FIND` request paths |
 | `client/scanner.c/h` | Student 2 | Recursive folder scan and hash metadata creation | Implemented |
 | `client/repl.c/h` | Student 2 | Interactive commands | `find -s` wired; `find -d`, plain `find`, and `request` still incomplete |
-| `transfer/sender.c/h` | Student 2 | Send requested byte ranges to peers | Stubbed |
+| `transfer/listener.c/h` | Student 2 | Accept incoming transfer requests on the client data port | Implemented listener thread and per-request dispatch |
+| `transfer/sender.c/h` | Student 2 | Send requested byte ranges to peers | Sends `TRANSFER_DATA` frames for validated byte ranges |
 | `transfer/receiver.c/h` | Student 2 | Request segments, collect them, assemble file | Stubbed |
 | `search/neighbors.c/h` | Student 3 | Neighbor list management and distributed-search API boundary | Neighbor list works; `search_distributed` stubbed |
 | `search/flood.c/h` | Student 3 | Flood listener, query forwarding, TTL behavior | Stubbed |
@@ -141,6 +142,9 @@ Student 2 owns `client/`, `transfer/`, and `common/net.c`.
 - `client/repl.c` supports:
   - `find -s <name>` through the central server
   - TODO messages for distributed search and transfer commands
+- `transfer/listener.c` starts a detached listener on the client data port.
+- `transfer/sender.c` locates local files by `(hash, size)` and sends requested
+  byte ranges as `P2P_MSG_TRANSFER_DATA` frames.
 
 ### What Student 2 Should Work On Next
 
@@ -149,32 +153,19 @@ Student 2 owns `client/`, `transfer/`, and `common/net.c`.
    - Test that `find -s <name>` prints real server results.
    - Add integration notes or tests for a client/server smoke run.
 
-2. Implement the transfer listener.
-   - Start one listener thread per client process.
-   - Listen on `<data_port>`.
-   - Accept incoming transfer requests.
-   - Spawn a per-request sender thread.
-
-3. Implement `transfer/sender.c`.
-   - Receive or accept a `transfer_req_t`.
-   - Locate the requested file by `(hash, size)`.
-   - Validate byte range.
-   - Send the requested byte range.
-   - Handle hot-unplug with `access()` or `stat()` before opening files.
-
-4. Implement `transfer/receiver.c`.
+2. Implement `transfer/receiver.c`.
    - Query the server for peers that hold `(S, H)`.
    - Split the requested file into byte ranges.
    - Start one receiving thread per peer/segment.
    - Track received segments with a mutex-protected bitmap or equivalent state.
    - Assemble the final file only after all segments arrive.
 
-5. Wire `request <S> <H>` in the REPL.
+3. Wire `request <S> <H>` in the REPL.
    - Parse size and hash.
    - Call `transfer_request`.
    - Print success/failure clearly.
 
-6. Later, wire plain `find <name>`.
+4. Later, wire plain `find <name>`.
    - Try server first.
    - If the server search times out or returns no results, call Student 3's
      `search_distributed`.
@@ -388,7 +379,7 @@ Final integration:
 - Server message handling is still the main blocker for central search.
 - Distributed search has neighbor and aggregator scaffolding, but no flood
   implementation yet.
-- Transfer request, sender, receiver, and assembly are still stubs.
+- Transfer receiver and final file assembly are still stubs.
 - Protocol structs are frozen enough to proceed, but any future change will
   require coordinated updates across client, server, search, and tests.
 - The report exists, but content should be filled continuously to avoid a last
