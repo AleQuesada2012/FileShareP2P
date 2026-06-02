@@ -1,7 +1,7 @@
 CC ?= cc
 UNAME_S := $(shell uname -s)
 
-CPPFLAGS += -I. -D_POSIX_C_SOURCE=200809L
+CPPFLAGS += -I. -D_POSIX_C_SOURCE=200809L -D_FILE_OFFSET_BITS=64
 ifeq ($(UNAME_S),Darwin)
 CPPFLAGS += -D_DARWIN_C_SOURCE
 endif
@@ -31,6 +31,7 @@ CLIENT_OBJS := \
 	$(BUILD_DIR)/client/server_api.o \
 	$(BUILD_DIR)/client/scanner.o \
 	$(BUILD_DIR)/transfer/sender.o \
+	$(BUILD_DIR)/transfer/listener.o \
 	$(BUILD_DIR)/transfer/receiver.o \
 	$(BUILD_DIR)/search/neighbors.o \
 	$(BUILD_DIR)/search/flood.o \
@@ -39,7 +40,8 @@ CLIENT_OBJS := \
 TEST_BINS := \
 	$(BUILD_DIR)/tests/unit/test_hash \
 	$(BUILD_DIR)/tests/unit/test_net \
-	$(BUILD_DIR)/tests/unit/test_protocol_roundtrip
+	$(BUILD_DIR)/tests/unit/test_protocol_roundtrip \
+	$(BUILD_DIR)/tests/unit/test_transfer_sender
 
 .PHONY: all server client test docs clean
 
@@ -66,6 +68,10 @@ $(BUILD_DIR)/tests/unit/test_net: $(BUILD_DIR)/tests/unit/test_net.o $(BUILD_DIR
 	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
 
 $(BUILD_DIR)/tests/unit/test_protocol_roundtrip: $(BUILD_DIR)/tests/unit/test_protocol_roundtrip.o $(BUILD_DIR)/common/net.o
+	@mkdir -p $(dir $@)
+	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
+
+$(BUILD_DIR)/tests/unit/test_transfer_sender: $(BUILD_DIR)/tests/unit/test_transfer_sender.o $(BUILD_DIR)/transfer/sender.o $(BUILD_DIR)/common/hash.o $(BUILD_DIR)/common/net.o
 	@mkdir -p $(dir $@)
 	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
 
