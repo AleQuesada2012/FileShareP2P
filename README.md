@@ -88,10 +88,10 @@ Current runtime limitations:
 | Client startup scan | Implemented locally, then sends a `REGISTER` request to the server |
 | REPL `find -s <name>` | Sends a central-server `FIND` request and prints returned `(S, H, IP, port, name)` results |
 | REPL `find -d <name>` / `find <name>` | Parsed, but distributed search and fallback remain TODO |
-| REPL `request` command | Parsed as TODO message |
+| REPL `request <S> <H>` | Uses cached search results, downloads segments, and writes `download_<S>_<H>.bin` |
 | Incoming transfer listener | Starts on the client data port and accepts `TRANSFER_REQ` messages |
 | Transfer sender | Sends requested byte ranges as `TRANSFER_DATA` frames |
-| Transfer receiver / file assembly | Stubbed with `ENOSYS` |
+| Transfer receiver / file assembly | Splits ranges across peers and assembles a completed file |
 | Distributed search flood | Stubbed with `ENOSYS` |
 
 ## Protocol Contract
@@ -118,7 +118,7 @@ Recommended next implementation work:
 | Owner | Next task |
 |---|---|
 | Student 1 | Implement `REGISTER` and `FIND` handling in `server/query_handler.c` using the frozen protocol |
-| Student 2 | Implement `transfer_request` and wire `request <S> <H>` to segmented download and assembly |
+| Student 2 | Test client/server/transfer integration once Student 1's server handler is ready |
 | Student 3 | Seed `search/neighbors.c` from `register_resp_t`, then implement flood receive/forward logic |
 
 Keep commits focused by ownership area. Changes to `common/` need extra care because all modules depend on it.

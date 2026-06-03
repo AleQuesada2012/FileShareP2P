@@ -42,10 +42,10 @@ change it casually. Any protocol change affects all three students.
 | `client/main.c` | Student 2 | Parse CLI, scan share folder, register with server, start REPL | Registration now wired |
 | `client/server_api.c/h` | Student 2 | Client-side protocol calls to central server | Implements `REGISTER` and `FIND` request paths |
 | `client/scanner.c/h` | Student 2 | Recursive folder scan and hash metadata creation | Implemented |
-| `client/repl.c/h` | Student 2 | Interactive commands | `find -s` wired; `find -d`, plain `find`, and `request` still incomplete |
+| `client/repl.c/h` | Student 2 | Interactive commands | `find -s` and `request <S> <H>` wired; `find -d` and plain `find` still incomplete |
 | `transfer/listener.c/h` | Student 2 | Accept incoming transfer requests on the client data port | Implemented listener thread and per-request dispatch |
 | `transfer/sender.c/h` | Student 2 | Send requested byte ranges to peers | Sends `TRANSFER_DATA` frames for validated byte ranges |
-| `transfer/receiver.c/h` | Student 2 | Request segments, collect them, assemble file | Stubbed |
+| `transfer/receiver.c/h` | Student 2 | Request segments, collect them, assemble file | Splits ranges across peers and assembles into the share folder |
 | `search/neighbors.c/h` | Student 3 | Neighbor list management and distributed-search API boundary | Neighbor list works; `search_distributed` stubbed |
 | `search/flood.c/h` | Student 3 | Flood listener, query forwarding, TTL behavior | Stubbed |
 | `search/aggregator.c/h` | Student 3 | Collect distributed search responses | Basic thread-safe aggregator implemented |
@@ -141,10 +141,14 @@ Student 2 owns `client/`, `transfer/`, and `common/net.c`.
   - central-server `FIND` for `find -s`
 - `client/repl.c` supports:
   - `find -s <name>` through the central server
-  - TODO messages for distributed search and transfer commands
+  - `request <S> <H>` using peers cached from the latest search result
+  - TODO messages for distributed search and server-first fallback
 - `transfer/listener.c` starts a detached listener on the client data port.
 - `transfer/sender.c` locates local files by `(hash, size)` and sends requested
   byte ranges as `P2P_MSG_TRANSFER_DATA` frames.
+- `transfer/receiver.c` splits byte ranges across available peers, receives
+  `P2P_MSG_TRANSFER_DATA` frames concurrently, and writes a completed
+  `download_<S>_<H>.bin` file into the share folder.
 
 ### What Student 2 Should Work On Next
 
@@ -153,19 +157,12 @@ Student 2 owns `client/`, `transfer/`, and `common/net.c`.
    - Test that `find -s <name>` prints real server results.
    - Add integration notes or tests for a client/server smoke run.
 
-2. Implement `transfer/receiver.c`.
-   - Query the server for peers that hold `(S, H)`.
-   - Split the requested file into byte ranges.
-   - Start one receiving thread per peer/segment.
-   - Track received segments with a mutex-protected bitmap or equivalent state.
-   - Assemble the final file only after all segments arrive.
+2. Improve request peer discovery once the server handler is ready.
+   - Current `request <S> <H>` uses cached results from the latest `find -s`.
+   - The final behavior should query or otherwise refresh all peers holding the
+     requested `(S, H)` before splitting segments.
 
-3. Wire `request <S> <H>` in the REPL.
-   - Parse size and hash.
-   - Call `transfer_request`.
-   - Print success/failure clearly.
-
-4. Later, wire plain `find <name>`.
+3. Later, wire plain `find <name>`.
    - Try server first.
    - If the server search times out or returns no results, call Student 3's
      `search_distributed`.
@@ -379,7 +376,8 @@ Final integration:
 - Server message handling is still the main blocker for central search.
 - Distributed search has neighbor and aggregator scaffolding, but no flood
   implementation yet.
-- Transfer receiver and final file assembly are still stubs.
+- Request peer discovery still depends on cached search results until central
+  server integration is complete.
 - Protocol structs are frozen enough to proceed, but any future change will
   require coordinated updates across client, server, search, and tests.
 - The report exists, but content should be filled continuously to avoid a last
