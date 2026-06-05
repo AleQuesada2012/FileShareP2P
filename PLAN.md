@@ -219,6 +219,23 @@ git push -u origin experimental
   `test_server_query_handler`, `test_transfer_sender`, and
   `test_transfer_receiver`.
 - `make` passed after M1 and rebuilt `build/server/p2p-server`.
+- Committed M1 as `7e9e264 feat(server): implement central query handler`.
+
+### 2026-06-05 12:12 CST — M2 centralized smoke
+
+- Ran real server on local port `19090`.
+- Ran one client with `peer1/alpha-video.txt`; startup scan and registration
+  succeeded with zero neighbors.
+- Ran a second client with `peer2/beta.txt`; registration succeeded with one
+  neighbor.
+- `find -s alpha` from the second client returned one result for
+  `alpha-video.txt` from the first peer, proving central `REGISTER` + `FIND`
+  integration works with the real binaries.
+- Added the repeatable M2 procedure to `tests/integration/README.md`.
+- `make test` passed after M2:
+  `test_hash`, `test_net`, `test_protocol_roundtrip`,
+  `test_server_query_handler`, `test_transfer_sender`, and
+  `test_transfer_receiver`.
 
 ### 2026-06-05 Handoff
 
