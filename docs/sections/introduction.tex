@@ -1,3 +1,19 @@
 \section{Introduccion}
 
-Este documento describe el diseno e implementacion de un simulador P2P para busqueda y transferencia de archivos mediante sockets TCP.
+Este documento describe el diseno e implementacion de un simulador P2P para
+busqueda y transferencia de archivos mediante sockets TCP en C. El sistema
+combina un servidor central de metadatos con un mecanismo distribuido de
+busqueda entre vecinos, de modo que los clientes pueden localizar archivos aun
+cuando la busqueda central no retorna resultados.
+
+El proyecto se organiza alrededor de dos comandos de usuario. El comando
+\texttt{find} localiza archivos por coincidencia parcial de nombre y puede
+usar el servidor, la red distribuida o un modo automatico que intenta ambos. El
+comando \texttt{request S H} descarga un archivo identificado por tamano y hash
+desde los pares encontrados, dividiendo el rango de bytes entre los duenios
+disponibles y ensamblando el resultado en la carpeta compartida local.
+
+La solucion busca cumplir tres objetivos practicos: mantener un protocolo de
+comunicacion estable, tolerar fallas comunes como desconexiones y retiro de la
+carpeta compartida, y validar el comportamiento con pruebas unitarias e
+integraciones locales de varios clientes.

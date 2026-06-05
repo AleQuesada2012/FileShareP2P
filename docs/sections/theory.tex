@@ -1,3 +1,49 @@
 \section{Marco teorico}
 
-Pendiente: P2P, calidad de servicio, hashing, busqueda distribuida, manejo de I/O y sockets.
+\subsection{Redes P2P}
+
+En una red peer-to-peer cada nodo puede actuar como cliente y servidor. Esta
+propiedad permite que un cliente solicite datos a otros clientes sin depender
+de un unico repositorio de archivos. El proyecto usa un servidor central solo
+para registrar metadatos y sembrar vecinos iniciales; las transferencias de
+datos y la busqueda distribuida ocurren directamente entre clientes.
+
+\subsection{Calidad de servicio}
+
+La calidad de servicio se refleja en tiempos de busqueda, disponibilidad de
+pares y continuidad de las transferencias. La implementacion reduce bloqueos
+separando responsabilidades en hilos: la consola queda en el hilo principal,
+el puerto de datos tiene un listener dedicado y cada transferencia usa hilos de
+segmento. Tambien se ignora \texttt{SIGPIPE} y se revisan errores de I/O para
+evitar que una conexion cerrada termine el proceso.
+
+\subsection{Hashing de archivos}
+
+El sistema identifica un archivo por el par \texttt{(hash, size)}. Se usa una
+funcion propia basada en FNV-1a de 64 bits sobre el contenido del archivo, lo
+que permite reconocer el mismo archivo aunque cambie su nombre. El tamano se
+incluye como segunda llave para disminuir falsos positivos y para dividir los
+rangos de descarga.
+
+\subsection{Sockets TCP y framing}
+
+Todos los mensajes viajan sobre TCP. Antes de cada mensaje se envia una
+longitud externa con \texttt{net\_send\_msg}; dentro de ese frame aparece un
+\texttt{p2p\_msg\_header\_t} con opcode, version y tamano del payload. Los
+enteros de multiples bytes se codifican en orden de red con \texttt{htons},
+\texttt{htonl} y conversiones de 64 bits equivalentes.
+
+\subsection{Busqueda distribuida}
+
+La busqueda distribuida usa flooding con TTL. Cada consulta incluye un ID de
+16 caracteres hexadecimales, termino de busqueda, IP y puerto del originador,
+y un contador TTL. Cada cliente mantiene una cache de IDs vistos durante 60
+segundos para evitar ciclos. Cuando recibe una consulta nueva, revisa su
+carpeta compartida, responde directamente al originador si encuentra
+coincidencias y reenvia a sus vecinos con TTL decrementado.
+
+El TTL por defecto es 4 y el maximo aceptado es 6. Con grado promedio 3, un TTL
+4 tiene un limite teorico de aproximadamente $3^4 = 81$ mensajes, suficiente
+para una prueba local de tres clientes sin saturar la LAN. La ventana de
+agregacion por defecto es 2 segundos y puede configurarse al iniciar el
+cliente.

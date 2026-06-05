@@ -1,3 +1,82 @@
 \section{Descripcion de la solucion}
 
-Pendiente: arquitectura, protocolo, servidor, cliente, transferencia segmentada y busqueda distribuida.
+\subsection{Arquitectura}
+
+La solucion esta dividida en modulos. \texttt{common/} contiene el protocolo,
+wrappers de sockets y hashing. \texttt{server/} implementa el servidor central
+y su registro de pares. \texttt{client/} contiene el arranque, escaneo de
+carpetas, API hacia el servidor y REPL. \texttt{transfer/} implementa el
+listener del puerto de datos, el envio de rangos y el receptor que ensambla
+segmentos. \texttt{search/} contiene vecinos, flooding y agregacion de
+respuestas.
+
+\subsection{Servidor central}
+
+El servidor escucha conexiones TCP y crea un hilo por cliente aceptado. Cada
+mensaje debe tener version valida, opcode conocido y longitud de payload
+correcta. El opcode \texttt{REGISTER} registra la IP observada en la conexion,
+el puerto de datos anunciado y la lista de archivos del cliente. La respuesta
+incluye hasta \texttt{P2P\_MAX\_NEIGHBORS} pares recientes, excluyendo al par
+que acaba de registrarse. El opcode \texttt{FIND} busca coincidencias parciales
+por nombre y retorna metadatos \texttt{S}, \texttt{H}, IP, puerto y nombre.
+Los errores de version, formato u opcode se responden con \texttt{ERROR}.
+
+\subsection{Cliente y comandos}
+
+Al iniciar, el cliente recibe IP y puerto del servidor, puerto de datos y
+carpeta compartida. Escanea recursivamente la carpeta, calcula hash y tamano,
+registra los metadatos en el servidor, inicializa la busqueda distribuida y
+arranca un listener unico para mensajes entre pares.
+
+El REPL soporta:
+\begin{itemize}
+  \item \texttt{find -s nombre}: busqueda centralizada.
+  \item \texttt{find -d nombre}: busqueda distribuida.
+  \item \texttt{find nombre}: servidor primero; si falla o retorna cero
+  resultados, usa busqueda distribuida.
+  \item \texttt{request S H}: descarga usando los pares de la ultima busqueda
+  mostrada.
+\end{itemize}
+
+\subsection{Transferencia segmentada}
+
+El receptor filtra los resultados cacheados por \texttt{S} y \texttt{H},
+elimina pares duplicados y divide el archivo entre los pares disponibles. Cada
+hilo de segmento abre una conexion TCP al puerto de datos del par, envia
+\texttt{TRANSFER\_REQ} con \texttt{hash}, \texttt{size}, \texttt{byte\_start}
+y \texttt{byte\_end}, y recibe frames \texttt{TRANSFER\_DATA}. Los bytes se
+escriben con \texttt{pwrite} en un archivo parcial. Si todos los segmentos
+terminan bien, el archivo parcial se renombra a
+\texttt{download\_S\_H.bin}.
+
+\subsection{Listener unico del puerto de datos}
+
+Para evitar que transferencia y busqueda distribuida compitan por el mismo
+puerto, el cliente usa un solo listener. El dispatcher lee el header del frame
+y enruta por opcode: \texttt{TRANSFER\_REQ} hacia el sender,
+\texttt{QUERY\_FLOOD} hacia la logica de flooding,
+\texttt{QUERY\_RESULT} hacia el agregador, y opcodes invalidos hacia
+\texttt{ERROR}.
+
+\subsection{Busqueda distribuida}
+
+La lista de vecinos se siembra con la respuesta de registro del servidor y se
+actualiza con resultados observados. \texttt{find -d} genera un ID de consulta
+de 64 bits en hexadecimal, marca el ID como visto localmente, envia
+\texttt{QUERY\_FLOOD} a los vecinos y abre una ventana de agregacion. Cada par
+que recibe una consulta nueva escanea su carpeta compartida en ese momento; por
+eso tambien puede encontrar archivos agregados despues del registro central.
+Las respuestas \texttt{QUERY\_RESULT} se envian directamente al originador.
+
+Se mantuvo congelado \texttt{common/protocol.h}. Como el mensaje congelado
+incluye el originador pero no el puerto de datos del remitente inmediato, el
+control de ciclos depende de la cache de IDs vistos. En las pruebas locales,
+esto permite trabajar con varios clientes en la misma maquina sin confundir
+pares distintos que comparten IP.
+
+\subsection{Tolerancia a hot-unplug}
+
+Antes de escanear o abrir archivos se revisa acceso a la carpeta. Si la carpeta
+compartida desaparece, el cliente registra una advertencia y continua vivo. Las
+fallas de lectura se propagan como errores de transferencia o como busquedas
+locales sin resultados, pero no terminan el servidor ni el proceso cliente.

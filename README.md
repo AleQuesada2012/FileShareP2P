@@ -1,48 +1,26 @@
 # FileShareP2P
 
-P2P file-sharing simulator over TCP sockets for IC-6600 Principios de Sistemas Operativos, ITCR I Semestre 2026.
+P2P file-sharing simulator over TCP sockets for IC-6600 Principios de Sistemas
+Operativos, ITCR I Semestre 2026.
 
-This repository is currently aligned with **Phase 1 - Foundations** from `AGENTS.md`: shared interfaces, socket helpers, hashing, build targets, tests, and project skeletons are in place so the three implementation tracks can continue independently.
+## Current State
 
-## Phase 1 Scope
+The simulator implements the required central server, client control, segmented
+file request, file assembly, distributed search, TTL/cycle control, and
+hot-unplug tolerance paths.
 
-Phase 1 is about stable shared contracts, not a complete simulator.
+Implemented highlights:
 
-Current Phase 1 deliverables:
-
-| Area | Owner | Status |
-|---|---|---|
-| Wire protocol structs and opcodes | Student 1 | Defined in `common/protocol.h`; changes require team review |
-| Deterministic file hash | Student 1 | Implemented with FNV-1a `uint64_t` hashing |
-| Hash unit tests | Student 1 | Covers known answer, empty file, binary data, large file, missing path |
-| Socket wrapper API | Student 2 | Implemented in `common/net.c` / `common/net.h` |
-| Net/protocol smoke tests | Student 2 + all | Length-frame and protocol round-trip tests pass |
-| Repository skeleton | Student 3 | Module directories, Makefile, and LaTeX shell exist |
-
-Phase 1 exit criteria:
-
-| Criterion | Current result |
+| Area | Status |
 |---|---|
-| `make` compiles without errors | Passing |
-| Hash function passes tests | Passing |
-| Two endpoints can exchange a framed message | Passing via `test_net` and `test_protocol_roundtrip` |
-
-## Repository Layout
-
-```text
-├── common/           # Shared protocol structs, hash, socket wrappers
-├── server/           # Student 1: registry and server query handling
-├── client/           # Student 2: startup, scanner, REPL
-├── transfer/         # Student 2: segmented file sender and receiver
-├── search/           # Student 3: neighbors, flood search, aggregator
-├── docs/             # Student 3: LaTeX report
-├── tests/
-│   ├── unit/         # Unit and smoke tests
-│   └── integration/  # Integration test notes/scaffold
-├── Makefile
-├── AGENTS.md         # Full project plan, ownership, rubric, timeline
-└── README.md
-```
+| Protocol | Fixed framed TCP protocol in `common/protocol.h` |
+| Hashing | Deterministic FNV-1a `uint64_t` file hashing |
+| Server | `REGISTER`, `FIND`, `ERROR`, recent-neighbor responses |
+| Client | Startup scan/register, REPL, central/distributed/fallback find |
+| Transfer | Multi-peer byte-range split, segment threads, assembly |
+| Search | TCP flood search, TTL, seen-query cache, response aggregation |
+| Listener | One client data-port listener dispatching transfer and search opcodes |
+| Docs/tests | Unit tests, integration smoke script, LaTeX report |
 
 ## Build And Test
 
@@ -58,71 +36,80 @@ build/server/p2p-server
 build/client/p2p-client
 ```
 
-Documentation build:
+Run the three-client smoke:
+
+```sh
+sh tests/integration/three_client_smoke.sh
+```
+
+The smoke starts one server and three clients, covers `find -s`, `find -d`,
+plain `find` fallback, multi-peer `request S H`, and share-folder removal while
+processes continue.
+
+Build the report:
 
 ```sh
 make docs
 ```
 
-`make docs` requires `pdflatex`. Generated LaTeX artifacts and `build/` are removed by:
+`make docs` runs `pdflatex` when it is installed and otherwise prints a warning.
+
+## Running Manually
+
+Start the server:
+
+```sh
+build/server/p2p-server <listen_port>
+```
+
+Start each client:
+
+```sh
+build/client/p2p-client <server_ip> <server_port> <data_port> <share_folder> \
+  [--ttl <n>] [--search-timeout <ms>]
+```
+
+REPL commands:
+
+```text
+find -s <name>       central server search
+find -d <name>       distributed neighbor search
+find <name>          server first, distributed fallback on failure/empty result
+request <S> <H>      download the file from peers in the latest search results
+help                 show commands
+quit                 exit
+```
+
+Downloaded files are written to the share folder as:
+
+```text
+download_<S>_<H>.bin
+```
+
+## Protocol Notes
+
+- `net_send_msg` / `net_recv_msg` provide the outer length-prefixed TCP frame.
+- Each payload begins with `p2p_msg_header_t`.
+- Multi-byte fields are encoded in network byte order.
+- `REGISTER_RESP` neighbors exclude the registering peer.
+- Distributed search uses TCP in this implementation.
+- `query_msg_t` carries the originator IP/port and TTL. Query cycles are
+  controlled with a 60-second seen-query cache.
+
+## Repository Layout
+
+```text
+common/      shared protocol, hash, socket helpers
+server/      central registry and query server
+client/      startup, scanning, server API, REPL
+transfer/    peer listener, sender, segmented receiver
+search/      neighbors, flood search, aggregation
+docs/        LaTeX report
+tests/       unit tests and integration smoke
+```
+
+## Cleanup
 
 ```sh
 make clean
 ```
-
-## Running The Current Binaries
-
-The binaries compile, but core Phase 2 behavior is still under development.
-
-```sh
-build/server/p2p-server <listen_port>
-build/client/p2p-client <server_ip> <server_port> <data_port> <share_folder> [--ttl <n>] [--search-timeout <ms>]
-```
-
-Current runtime limitations:
-
-| Command or feature | Current behavior |
-|---|---|
-| Server registration handling | Stubbed in `server/query_handler.c` |
-| Server `FIND` handling | Stubbed in `server/query_handler.c` |
-| Client startup scan | Implemented locally, then sends a `REGISTER` request to the server |
-| REPL `find -s <name>` | Sends a central-server `FIND` request and prints returned `(S, H, IP, port, name)` results |
-| REPL `find -d <name>` / `find <name>` | Parsed, but distributed search and fallback remain TODO |
-| REPL `request <S> <H>` | Uses cached search results, downloads segments, and writes `download_<S>_<H>.bin` |
-| Incoming transfer listener | Starts on the client data port and accepts `TRANSFER_REQ` messages |
-| Transfer sender | Sends requested byte ranges as `TRANSFER_DATA` frames |
-| Transfer receiver / file assembly | Splits ranges across peers and assembles a completed file |
-| Distributed search flood | Stubbed with `ENOSYS` |
-
-## Protocol Contract
-
-The shared protocol lives in `common/protocol.h` and is the main Phase 1 freeze point.
-
-Important rules:
-
-- TCP messages use `net_send_msg` / `net_recv_msg` as the outer length-prefixed frame.
-- The frame payload starts with `p2p_msg_header_t`, followed by the opcode-specific payload.
-- `p2p_msg_header_t.payload_len` is the number of bytes after the header.
-- Multi-byte integers must be encoded in network byte order before transmission.
-- Fixed-size string fields must be null-terminated when populated.
-- Structs must be zeroed or serialized into explicit byte buffers before sending.
-- `register_resp_t.neighbors` excludes the peer that just registered.
-- Distributed search uses TCP for this iteration.
-
-Do not change `common/protocol.h` without coordinating with all owners.
-
-## Phase 2 Starting Points
-
-Recommended next implementation work:
-
-| Owner | Next task |
-|---|---|
-| Student 1 | Implement `REGISTER` and `FIND` handling in `server/query_handler.c` using the frozen protocol |
-| Student 2 | Test client/server/transfer integration once Student 1's server handler is ready |
-| Student 3 | Seed `search/neighbors.c` from `register_resp_t`, then implement flood receive/forward logic |
-
-Keep commits focused by ownership area. Changes to `common/` need extra care because all modules depend on it.
-
-## Portability
-
-Target environment is standard Linux with C99 and POSIX sockets/pthreads. The Makefile also supports local macOS development by adding `_DARWIN_C_SOURCE` when needed. External dependencies should stay within standard POSIX facilities unless the team updates the project plan.

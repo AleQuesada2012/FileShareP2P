@@ -35,9 +35,15 @@ result for `alpha-video.txt`.
 
 ## Final three-client smoke
 
-Planned scenario:
+The full smoke can be run after `make` with:
 
-1. Start one server on a known port.
-2. Start three clients with separate share folders.
-3. Verify `find -s`, `find -d`, and `request S H` against a shared file.
-4. Remove one share folder while the client is running and confirm all processes survive.
+```sh
+sh tests/integration/three_client_smoke.sh
+```
+
+It starts one server and three clients with separate share folders. Peer 1 and
+peer 2 share the same file so peer 3 can validate segmented multi-peer
+downloads after `find -s` and `find -d`. The script then creates another file
+after registration so plain `find` must fall back to distributed search before
+requesting it. Finally, it removes peer 1's share folder while all processes
+are running and verifies that the clients and server survive.

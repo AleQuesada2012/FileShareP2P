@@ -266,6 +266,50 @@ git push -u origin experimental
   `test_server_query_handler`, `test_search`, `test_transfer_sender`, and
   `test_transfer_receiver`.
 - `make` passed after M3/M4.
+- Committed M3/M4 as `0be658b feat(search): add distributed flood search`.
+
+### 2026-06-05 12:24 CST — M5 transfer and hot-unplug validation
+
+- Ran a real local smoke with one server and three live clients.
+- Peer 1 and peer 2 shared identical `alpha-video.txt` files; peer 3 had an
+  empty share folder and received two neighbors from server registration.
+- Peer 3 ran `find -s alpha`, then `request <S> <H>`; the downloaded file
+  matched the source with `cmp`.
+- Peer 3 ran `find -d alpha`, then `request <S> <H>`; the downloaded file
+  matched the source with `cmp`.
+- Added `late-only.txt` to peer 1 and peer 2 after registration so the server
+  had no metadata for it. Peer 3 ran plain `find late`, fell back to
+  distributed search, then `request <S> <H>`; the downloaded file matched the
+  source with `cmp`.
+- Removed peer 1's share folder while all processes were running. A later
+  distributed search logged the expected local scan warning on peer 1, returned
+  peer 2's result, and peer 1, peer 2, peer 3, and the server all stayed alive.
+- `make test` passed after M5:
+  `test_hash`, `test_net`, `test_protocol_roundtrip`,
+  `test_server_query_handler`, `test_search`, `test_transfer_sender`, and
+  `test_transfer_receiver`.
+
+### 2026-06-05 12:28 CST — M6 final integration and documentation
+
+- Added executable `tests/integration/three_client_smoke.sh` for the full
+  local validation scenario.
+- Updated `tests/integration/README.md` with central and final smoke
+  procedures.
+- Completed the LaTeX report sections for introduction, theoretical framework,
+  solution description, experience, personal learnings, and conclusions.
+- Ran `make docs` twice with `pdflatex`; `docs/main.pdf` was generated
+  successfully with clean outline state.
+- Updated `README.md` to describe the completed implementation, commands,
+  tests, smoke script, protocol notes, and manual run flow.
+- Updated `breakdown.md` as the final module-by-module repository-state
+  summary.
+- Ran `sh tests/integration/three_client_smoke.sh`; it passed.
+- Final `make` passed.
+- Final `make test` passed:
+  `test_hash`, `test_net`, `test_protocol_roundtrip`,
+  `test_server_query_handler`, `test_search`, `test_transfer_sender`, and
+  `test_transfer_receiver`.
+- Committed M6 in the final docs/smoke commit.
 
 ### 2026-06-05 Handoff
 

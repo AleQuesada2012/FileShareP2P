@@ -1,3 +1,28 @@
 \section{Conclusiones}
 
-Pendiente: resultados, limitaciones y oportunidades de mejora.
+El simulador cumple el flujo principal solicitado: los clientes registran sus
+archivos en un servidor central, buscan por nombre, descargan archivos por
+hash y tamano desde uno o varios pares, y pueden recurrir a una busqueda
+distribuida cuando el servidor no entrega resultados. Las pruebas locales con
+tres clientes demostraron busqueda centralizada, busqueda distribuida,
+fallback automatico, descarga segmentada y tolerancia a la desaparicion de una
+carpeta compartida.
+
+La decision de usar TCP para todos los mensajes simplifico la confiabilidad del
+transporte y permitio reutilizar el mismo framing. El costo es que cada
+propagacion abre conexiones, por lo que el TTL debe mantenerse bajo. Para la
+red de prueba, TTL 4 fue suficiente; subirlo a 6 solo tendria sentido en una
+red mas grande y con mediciones de carga.
+
+La principal limitacion es que el servidor central no elimina automaticamente
+pares que ya no estan disponibles. Si un cliente se apaga sin avisar, sus
+metadatos pueden permanecer hasta que falle una transferencia o una busqueda
+distribuida encuentre alternativas. Como mejora futura se agregarian heartbeats
+o expiracion de pares en el registro central, junto con una opcion explicita de
+refrescar metadatos despues de cambios en la carpeta compartida.
+
+Otra mejora seria enriquecer el protocolo distribuido con el puerto de datos
+del remitente inmediato. La version actual conserva el protocolo congelado y
+usa la cache de IDs vistos para evitar ciclos, lo cual funciona para la prueba,
+pero un campo de remitente permitiria excluir con mas precision el enlace por
+el que llego una consulta.

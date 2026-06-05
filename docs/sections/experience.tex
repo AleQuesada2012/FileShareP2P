@@ -1,3 +1,27 @@
 \section{Descripcion de la experiencia}
 
-Pendiente: proceso de desarrollo, integraciones, pruebas y retos tecnicos.
+El desarrollo se trabajo por capas. Primero se estabilizaron las estructuras de
+protocolo, la funcion de hash, los wrappers de red y las pruebas unitarias. Con
+esa base, el siguiente bloqueo fue el servidor central: hasta implementar
+\texttt{REGISTER} y \texttt{FIND}, el cliente podia escanear y enviar mensajes
+pero no existia una respuesta real de integracion.
+
+El reto principal fue mantener un contrato de red consistente. Cada modulo
+debia respetar el framing externo, el header interno y el orden de red para
+enteros de 16, 32 y 64 bits. Se agregaron pruebas enfocadas para el handler del
+servidor, incluyendo desconexion temprana y frames malformados, porque esos
+casos son comunes cuando hay varios procesos en pruebas.
+
+La segunda decision importante fue unificar el listener del puerto de datos.
+Inicialmente transferencia y busqueda distribuida podian interpretarse como
+listeners separados, pero ambos debian usar el mismo puerto del cliente. La
+solucion fue un dispatcher por opcode, que conserva la transferencia existente
+y agrega los mensajes de busqueda sin crear una carrera por el bind.
+
+La validacion final se hizo con un smoke local de tres clientes. Dos pares
+compartieron el mismo archivo para comprobar descarga segmentada multi-peer; un
+tercer par ejecuto \texttt{find -s}, \texttt{find -d}, \texttt{find} con
+fallback, y \texttt{request S H}. Tambien se agrego un archivo despues del
+registro central para demostrar que la busqueda distribuida reescanea la
+carpeta viva. Por ultimo, se elimino una carpeta compartida mientras los
+procesos seguian activos para verificar tolerancia a hot-unplug.

@@ -1,10 +1,22 @@
 \section{Aprendizajes personales}
 
 \subsection*{Integrante 1}
-Pendiente.
+El trabajo del servidor mostro la importancia de congelar temprano el
+protocolo. Un cambio pequeno en un struct o en el orden de bytes afecta a
+cliente, transferencia, busqueda y pruebas. Tambien reforzo la necesidad de
+validar entradas malformadas sin asumir que todos los clientes se desconectan
+de forma limpia.
 
 \subsection*{Integrante 2}
-Pendiente.
+La parte de cliente y transferencia dejo claro que la concurrencia debe tener
+limites simples. Separar REPL, listener y segmentos de descarga hizo que el
+sistema siguiera respondiendo mientras ocurren I/O de red y disco. El uso de
+\texttt{pwrite} y archivos parciales facilito ensamblar segmentos sin depender
+del orden en que terminan los hilos.
 
 \subsection*{Integrante 3}
-Pendiente.
+La busqueda distribuida evidencio el balance entre alcance y control de
+propagacion. TTL, cache de consultas vistas y ventana de agregacion son
+decisiones pequenas pero determinan si la red encuentra resultados o se satura.
+Tambien fue valioso documentar las pruebas mientras se implementaban, porque
+el comportamiento distribuido es dificil de explicar solo leyendo codigo.
