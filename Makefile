@@ -41,6 +41,7 @@ TEST_BINS := \
 	$(BUILD_DIR)/tests/unit/test_hash \
 	$(BUILD_DIR)/tests/unit/test_net \
 	$(BUILD_DIR)/tests/unit/test_protocol_roundtrip \
+	$(BUILD_DIR)/tests/unit/test_server_query_handler \
 	$(BUILD_DIR)/tests/unit/test_transfer_sender \
 	$(BUILD_DIR)/tests/unit/test_transfer_receiver
 
@@ -69,6 +70,10 @@ $(BUILD_DIR)/tests/unit/test_net: $(BUILD_DIR)/tests/unit/test_net.o $(BUILD_DIR
 	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
 
 $(BUILD_DIR)/tests/unit/test_protocol_roundtrip: $(BUILD_DIR)/tests/unit/test_protocol_roundtrip.o $(BUILD_DIR)/common/net.o
+	@mkdir -p $(dir $@)
+	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
+
+$(BUILD_DIR)/tests/unit/test_server_query_handler: $(BUILD_DIR)/tests/unit/test_server_query_handler.o $(BUILD_DIR)/server/query_handler.o $(BUILD_DIR)/server/registry.o $(BUILD_DIR)/common/net.o
 	@mkdir -p $(dir $@)
 	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
 
