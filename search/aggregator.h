@@ -12,6 +12,7 @@ typedef struct {
 
 int aggregator_init(response_aggregator_t *aggregator);
 void aggregator_destroy(response_aggregator_t *aggregator);
+int aggregator_reset(response_aggregator_t *aggregator);
 int aggregator_add(response_aggregator_t *aggregator, const file_meta_t *result);
 size_t aggregator_collect(response_aggregator_t *aggregator, search_results_t *out);
 

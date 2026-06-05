@@ -1,8 +1,8 @@
 #include "search/neighbors.h"
 
-#include <errno.h>
 #include <string.h>
 #include <time.h>
+#include <errno.h>
 
 int neighbors_init(neighbor_list_t *neighbors)
 {
@@ -77,16 +77,4 @@ size_t neighbors_snapshot(neighbor_list_t *neighbors, peer_entry_t *out, size_t 
 
     (void)pthread_mutex_unlock(&neighbors->lock);
     return copied;
-}
-
-int search_distributed(const char *term, search_results_t *results_out)
-{
-    if (term == NULL || results_out == NULL) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    memset(results_out, 0, sizeof(*results_out));
-    errno = ENOSYS;
-    return -1;
 }

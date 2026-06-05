@@ -14,8 +14,8 @@ static void print_help(void)
 {
     puts("Commands:");
     puts("  find -s <name>       search through central server");
-    puts("  find -d <name>       distributed neighbor search (TODO)");
-    puts("  find <name>          server first, then distributed fallback (TODO)");
+    puts("  find -d <name>       distributed neighbor search");
+    puts("  find <name>          server first, then distributed fallback");
     puts("  request <S> <H>      request file by size and hash");
     puts("  help                 show this help");
     puts("  quit                 exit client");
@@ -134,6 +134,7 @@ static void handle_find_command(const repl_context_t *ctx,
 {
     char *term = skip_spaces(args);
     search_results_t results;
+    int server_rc;
 
     if (strncmp(term, "-s", 2u) == 0 && (term[2] == '\0' || isspace((unsigned char)term[2]))) {
         term = skip_spaces(term + 2);
@@ -147,6 +148,7 @@ static void handle_find_command(const repl_context_t *ctx,
             return;
         }
         print_find_results(&results);
+        (void)search_remember_results(&results);
         if (last_results != NULL) {
             *last_results = results;
         }
@@ -154,7 +156,21 @@ static void handle_find_command(const repl_context_t *ctx,
     }
 
     if (strncmp(term, "-d", 2u) == 0 && (term[2] == '\0' || isspace((unsigned char)term[2]))) {
-        puts("TODO: distributed search is not implemented yet.");
+        term = skip_spaces(term + 2);
+        if (*term == '\0') {
+            fprintf(stderr, "Usage: find -d <name>\n");
+            return;
+        }
+
+        if (search_distributed(term, &results) != 0) {
+            perror("search_distributed");
+            return;
+        }
+        print_find_results(&results);
+        (void)search_remember_results(&results);
+        if (last_results != NULL) {
+            *last_results = results;
+        }
         return;
     }
 
@@ -163,7 +179,29 @@ static void handle_find_command(const repl_context_t *ctx,
         return;
     }
 
-    puts("TODO: server-first search fallback is not implemented yet. Use: find -s <name>");
+    server_rc = server_find_files(ctx->server_ip, ctx->server_port, term, &results);
+    if (server_rc == 0 && results.count > 0u) {
+        print_find_results(&results);
+        (void)search_remember_results(&results);
+        if (last_results != NULL) {
+            *last_results = results;
+        }
+        return;
+    }
+    if (server_rc != 0) {
+        perror("server_find_files");
+        fprintf(stderr, "Falling back to distributed search.\n");
+    }
+
+    if (search_distributed(term, &results) != 0) {
+        perror("search_distributed");
+        return;
+    }
+    print_find_results(&results);
+    (void)search_remember_results(&results);
+    if (last_results != NULL) {
+        *last_results = results;
+    }
 }
 
 static void handle_request_command(const repl_context_t *ctx,

@@ -236,6 +236,36 @@ git push -u origin experimental
   `test_hash`, `test_net`, `test_protocol_roundtrip`,
   `test_server_query_handler`, `test_transfer_sender`, and
   `test_transfer_receiver`.
+- Committed M2 as `4e35001 docs(integration): add central server smoke`.
+
+### 2026-06-05 12:21 CST — M3/M4 unified peer listener and distributed search
+
+- Replaced the transfer-only data-port listener with one peer listener that
+  dispatches `TRANSFER_REQ`, `QUERY_FLOOD`, `QUERY_RESULT`, and invalid peer
+  opcodes.
+- Implemented distributed-search runtime initialization, neighbor seeding from
+  `REGISTER_RESP`, dynamic neighbor updates from search results, query ID
+  generation, seen-query deduplication with 60-second expiry, TTL decrement and
+  cap behavior, local share-folder scanning, direct `QUERY_RESULT` responses,
+  active response aggregation, and `search_distributed(term, results_out)`.
+- Wired `find -d <name>` to distributed search.
+- Wired plain `find <name>` to try the central server first and fall back to
+  distributed search when the server fails or returns no results.
+- Kept `common/protocol.h` frozen. Design note: the frozen `query_msg_t` carries
+  the originator but not the immediate sender's listening data port; forwarding
+  therefore relies on the query-ID cache to suppress cycles instead of guessing
+  same-host sender ports.
+- Added `tests/unit/test_search.c` covering neighbor deduplication, query ID
+  deduplication/expiry, TTL behavior, aggregation reset/deduplication, and an
+  empty distributed-search response window.
+- Ran a real local distributed smoke with one server and two live clients:
+  `find -d alpha` returned peer 1, and plain `find late` found a file created
+  on peer 1 after registration, proving server-empty fallback.
+- `make test` passed after M3/M4:
+  `test_hash`, `test_net`, `test_protocol_roundtrip`,
+  `test_server_query_handler`, `test_search`, `test_transfer_sender`, and
+  `test_transfer_receiver`.
+- `make` passed after M3/M4.
 
 ### 2026-06-05 Handoff
 

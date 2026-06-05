@@ -3,6 +3,7 @@
 #include "client/server_api.h"
 #include "common/net.h"
 #include "common/protocol.h"
+#include "search/neighbors.h"
 #include "transfer/listener.h"
 
 #include <errno.h>
@@ -69,6 +70,7 @@ int main(int argc, char **argv)
     repl_context_t ctx;
     register_resp_t register_response;
     scan_result_t scan;
+    int repl_rc;
     int i;
 
     if (argc < 5) {
@@ -109,16 +111,20 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    if (transfer_listener_start(argv[3], ctx.share_folder) != 0) {
-        perror("transfer_listener_start");
-        fprintf(stderr, "Warning: incoming file transfers are disabled.\n");
-    }
-
     if (scanner_scan_folder(ctx.share_folder, &scan) != 0) {
         fprintf(stderr, "Warning: initial share-folder scan failed; continuing for hot-unplug tolerance.\n");
         memset(&scan, 0, sizeof(scan));
     }
     scanner_print_result(&scan);
+
+    if (search_runtime_init(ctx.share_folder,
+                            ctx.server_ip,
+                            ctx.data_port,
+                            ctx.ttl,
+                            ctx.search_timeout_ms) != 0) {
+        perror("search_runtime_init");
+        fprintf(stderr, "Warning: distributed search is disabled.\n");
+    }
 
     if (server_register_files(ctx.server_ip, ctx.server_port, ctx.data_port, &scan, &register_response) != 0) {
         perror("server_register_files");
@@ -129,7 +135,18 @@ int main(int argc, char **argv)
                ctx.server_ip,
                ctx.server_port,
                (unsigned)register_response.neighbor_count);
+        if (search_seed_neighbors(&register_response) != 0) {
+            perror("search_seed_neighbors");
+            fprintf(stderr, "Warning: server neighbor seeding failed.\n");
+        }
     }
 
-    return repl_run(&ctx) == 0 ? 0 : 1;
+    if (transfer_listener_start(argv[3], ctx.share_folder) != 0) {
+        perror("transfer_listener_start");
+        fprintf(stderr, "Warning: incoming peer messages are disabled.\n");
+    }
+
+    repl_rc = repl_run(&ctx);
+    search_runtime_destroy();
+    return repl_rc == 0 ? 0 : 1;
 }
