@@ -1,7 +1,7 @@
 CC ?= cc
 UNAME_S := $(shell uname -s)
 
-CPPFLAGS += -I. -D_POSIX_C_SOURCE=200809L
+CPPFLAGS += -I. -D_POSIX_C_SOURCE=200809L -D_XOPEN_SOURCE=700
 ifeq ($(UNAME_S),Darwin)
 CPPFLAGS += -D_DARWIN_C_SOURCE
 endif
@@ -39,7 +39,9 @@ CLIENT_OBJS := \
 TEST_BINS := \
 	$(BUILD_DIR)/tests/unit/test_hash \
 	$(BUILD_DIR)/tests/unit/test_net \
-	$(BUILD_DIR)/tests/unit/test_protocol_roundtrip
+	$(BUILD_DIR)/tests/unit/test_protocol_roundtrip \
+	$(BUILD_DIR)/tests/unit/test_registry \
+	$(BUILD_DIR)/tests/unit/test_query_handler
 
 .PHONY: all server client test docs clean
 
@@ -66,6 +68,19 @@ $(BUILD_DIR)/tests/unit/test_net: $(BUILD_DIR)/tests/unit/test_net.o $(BUILD_DIR
 	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
 
 $(BUILD_DIR)/tests/unit/test_protocol_roundtrip: $(BUILD_DIR)/tests/unit/test_protocol_roundtrip.o $(BUILD_DIR)/common/net.o
+	@mkdir -p $(dir $@)
+	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
+
+$(BUILD_DIR)/tests/unit/test_registry: $(BUILD_DIR)/tests/unit/test_registry.o $(BUILD_DIR)/server/registry.o
+	@mkdir -p $(dir $@)
+	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
+
+$(BUILD_DIR)/tests/unit/test_query_handler: \
+	$(BUILD_DIR)/tests/unit/test_query_handler.o \
+	$(BUILD_DIR)/client/server_api.o \
+	$(BUILD_DIR)/common/net.o \
+	$(BUILD_DIR)/server/query_handler.o \
+	$(BUILD_DIR)/server/registry.o
 	@mkdir -p $(dir $@)
 	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
 
