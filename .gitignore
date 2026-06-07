@@ -209,3 +209,11 @@ Proyecto2.tex
 
 # Project build output
 build/
+
+# sample share folder for testing
+share/
+
+# latex partial files
+*.aux
+*.log
+*.out

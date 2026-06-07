@@ -7,7 +7,10 @@ aligned.
 
 ## Current Project State
 
-The repository is between the end of Phase 1 and the start of Phase 2.
+The repository is in Phase 2 integration. Phase 1 foundations are in place, and
+Student 1 plus Student 2 work has now been merged on `dev` so Student 3 can
+build distributed search on top of a working central-server/client-transfer
+base.
 
 Phase 1 foundations are mostly in place:
 
@@ -18,13 +21,18 @@ Phase 1 foundations are mostly in place:
 - Unit tests exist for hashing, network framing, and a protocol round-trip.
 - Skeletons exist for server, client, transfer, search, and LaTeX docs.
 
-Early Phase 2 work has started:
+Early Phase 2 work now works end to end for centralized discovery and transfer:
 
 - The client scans the share folder at startup.
 - The client sends a `REGISTER` request after scanning.
 - The REPL supports `find -s <name>` by sending a central-server `FIND` request.
-- The server-side handler for `REGISTER` and `FIND` is still a stub, so full
-  end-to-end search is blocked on Student 1's server implementation.
+- The server accepts `REGISTER` and `FIND`, updates the registry, returns recent
+  peers on registration, and returns matching file metadata on centralized
+  search.
+- The REPL supports `request <S> <H>` using peers cached from the latest search
+  result, and the transfer layer can download and assemble the requested file.
+- Integration tests cover central registration/search and central
+  search-to-transfer download.
 
 The most important integration boundary is still `common/protocol.h`. Do not
 change it casually. Any protocol change affects all three students.
@@ -37,19 +45,21 @@ change it casually. Any protocol change affects all three students.
 | `common/hash.c/h` | Student 1 | Deterministic `uint64_t` file hashing | Implemented and tested |
 | `common/net.c/h` | Student 2 | TCP connect/listen and length-prefixed send/receive helpers | Implemented and tested |
 | `server/main.c` | Student 1 | Server startup, SIGPIPE handling, registry lifecycle | Implemented |
-| `server/registry.c/h` | Student 1 | Thread-safe in-memory peer registry and file lookup | Implemented scaffold with useful operations |
-| `server/query_handler.c/h` | Student 1 | Accept client messages and dispatch `REGISTER` / `FIND` | Stubbed |
+| `server/registry.c/h` | Student 1 | Thread-safe in-memory peer registry and file lookup | Implements registration, name lookup, identity lookup, recent peers, and recent peers excluding the registering peer |
+| `server/query_handler.c/h` | Student 1 | Accept client messages and dispatch `REGISTER` / `FIND` | Implements threaded `REGISTER`, `FIND`, and `ERROR` handling |
 | `client/main.c` | Student 2 | Parse CLI, scan share folder, register with server, start REPL | Registration now wired |
 | `client/server_api.c/h` | Student 2 | Client-side protocol calls to central server | Implements `REGISTER` and `FIND` request paths |
 | `client/scanner.c/h` | Student 2 | Recursive folder scan and hash metadata creation | Implemented |
-| `client/repl.c/h` | Student 2 | Interactive commands | `find -s` wired; `find -d`, plain `find`, and `request` still incomplete |
-| `transfer/sender.c/h` | Student 2 | Send requested byte ranges to peers | Stubbed |
-| `transfer/receiver.c/h` | Student 2 | Request segments, collect them, assemble file | Stubbed |
+| `client/repl.c/h` | Student 2 | Interactive commands | `find -s` and `request <S> <H>` wired; `find -d` and plain `find` still incomplete |
+| `transfer/listener.c/h` | Student 2 | Accept incoming transfer requests on the client data port | Implemented listener thread and per-request dispatch |
+| `transfer/sender.c/h` | Student 2 | Send requested byte ranges to peers | Sends `TRANSFER_DATA` frames for validated byte ranges |
+| `transfer/receiver.c/h` | Student 2 | Request segments, collect them, assemble file | Splits ranges across peers and assembles into the share folder |
 | `search/neighbors.c/h` | Student 3 | Neighbor list management and distributed-search API boundary | Neighbor list works; `search_distributed` stubbed |
 | `search/flood.c/h` | Student 3 | Flood listener, query forwarding, TTL behavior | Stubbed |
 | `search/aggregator.c/h` | Student 3 | Collect distributed search responses | Basic thread-safe aggregator implemented |
 | `docs/` | Student 3 | LaTeX report | Skeleton exists |
-| `tests/unit/` | All | Unit and smoke tests for shared behavior | Hash, net, and protocol tests exist |
+| `tests/unit/` | All | Unit and smoke tests for shared behavior | Hash, net, protocol, registry, query handler, and transfer tests exist |
+| `tests/integration/` | All | Local smoke tests for process-level behavior | Central server/client search and central search-to-transfer download tests exist |
 
 ## Student 1: Server And Protocol Architect
 
@@ -70,41 +80,27 @@ Student 1 owns `server/`, `common/hash.c`, and `common/protocol.h`.
   - The frame payload starts with `p2p_msg_header_t`.
   - Multi-byte integer fields must use network byte order on the wire.
 - `common/hash.c` implements FNV-1a hashing.
-- `server/registry.c` can register peers, search by filename substring, and
-  return recent peers.
+- `server/registry.c` can register peers, search by filename substring, search
+  by `(hash, size)`, return recent peers, and return recent peers excluding the
+  registering peer.
+- `server/query_handler.c` accepts client connections, spawns per-client
+  threads, decodes `REGISTER` / `FIND`, sends `REGISTER_RESP` / `FIND_RESP`,
+  and returns `ERROR` for bad messages.
 - `server/main.c` initializes the registry and starts the query server.
+- Tests cover registry behavior, query handler behavior, malformed messages,
+  disconnect safety, and a central client/server smoke run.
 
 ### What Student 1 Should Work On Next
 
-1. Implement `server/query_handler.c`.
-   - Keep the existing `query_server_run(const char *port, registry_t *registry)`
-     interface.
-   - Call `accept` in a loop.
-   - Spawn or dispatch per-client work without blocking the entire server.
-   - Never crash if a client disconnects early or sends malformed data.
+1. Stress-test server behavior with three or more clients.
+   - Confirm repeated registrations update an existing peer instead of
+     duplicating it.
+   - Confirm recent-peer ordering remains useful for Student 3 neighbor seeding.
+   - Confirm malformed or disconnected clients do not stop the server loop.
 
-2. Decode `P2P_MSG_REGISTER_REQ`.
-   - Read the full `p2p_msg_header_t + register_req_t` frame.
-   - Validate protocol version, opcode, and payload length.
-   - Decode network byte order fields.
-   - Register `(client_ip, data_port, files[])` in `registry_t`.
-   - Return `P2P_MSG_REGISTER_RESP` with recent peers, excluding the registering
-     peer.
-
-3. Decode `P2P_MSG_FIND_REQ`.
-   - Search `registry_t` by term.
-   - Return `P2P_MSG_FIND_RESP` with `(S, H, IP, port, name)` metadata.
-
-4. Return `P2P_MSG_ERROR` for bad messages.
-   - Unknown opcode.
-   - Unsupported protocol version.
-   - Invalid payload length.
-   - Registry full or internal failure.
-
-5. Add tests.
-   - At minimum, add focused tests for registry behavior and protocol handler
-     behavior.
-   - Keep tests simple and readable.
+2. Coordinate any future protocol change with Students 2 and 3.
+   - The current protocol is sufficient for centralized registration/search.
+   - Changes to `common/protocol.h` should remain rare and heavily tested.
 
 ### Student 1 Cautions
 
@@ -140,52 +136,38 @@ Student 2 owns `client/`, `transfer/`, and `common/net.c`.
   - central-server `FIND` for `find -s`
 - `client/repl.c` supports:
   - `find -s <name>` through the central server
-  - TODO messages for distributed search and transfer commands
+  - `request <S> <H>` using peers cached from the latest search result
+  - TODO messages for distributed search and server-first fallback
+- `transfer/listener.c` starts a detached listener on the client data port.
+- `transfer/sender.c` locates local files by `(hash, size)` and sends requested
+  byte ranges as `P2P_MSG_TRANSFER_DATA` frames.
+- `transfer/receiver.c` splits byte ranges across available peers, receives
+  `P2P_MSG_TRANSFER_DATA` frames concurrently, and writes a completed
+  `download_<S>_<H>.bin` file into the share folder.
+- Integration coverage now verifies that one client can register a file, another
+  client can find it through the central server, and `request <S> <H>` downloads
+  it through the transfer path.
 
 ### What Student 2 Should Work On Next
 
-1. Finish central-server integration after Student 1 implements the server.
-   - Test that startup registration succeeds.
-   - Test that `find -s <name>` prints real server results.
-   - Add integration notes or tests for a client/server smoke run.
+1. Improve request peer discovery once more search modes are available.
+   - Current `request <S> <H>` uses cached results from the latest `find -s`.
+   - Once `find -d` and plain `find` are wired, request should accept cached
+     results from whichever search mode last displayed matching peers.
 
-2. Implement the transfer listener.
-   - Start one listener thread per client process.
-   - Listen on `<data_port>`.
-   - Accept incoming transfer requests.
-   - Spawn a per-request sender thread.
-
-3. Implement `transfer/sender.c`.
-   - Receive or accept a `transfer_req_t`.
-   - Locate the requested file by `(hash, size)`.
-   - Validate byte range.
-   - Send the requested byte range.
-   - Handle hot-unplug with `access()` or `stat()` before opening files.
-
-4. Implement `transfer/receiver.c`.
-   - Query the server for peers that hold `(S, H)`.
-   - Split the requested file into byte ranges.
-   - Start one receiving thread per peer/segment.
-   - Track received segments with a mutex-protected bitmap or equivalent state.
-   - Assemble the final file only after all segments arrive.
-
-5. Wire `request <S> <H>` in the REPL.
-   - Parse size and hash.
-   - Call `transfer_request`.
-   - Print success/failure clearly.
-
-6. Later, wire plain `find <name>`.
+2. Wire plain `find <name>`.
    - Try server first.
    - If the server search times out or returns no results, call Student 3's
      `search_distributed`.
 
+3. Complete hot-unplug validation.
+   - Removing or renaming the share folder while the client runs should produce
+     warnings, not crashes.
+
 ### Student 2 Cautions
 
-- `client/server_api.c` currently expects server responses to use the frozen
-  protocol contract. If Student 1 changes response shapes, update both sides
-  together.
-- The current server is still a stub, so registration and `find -s` can fail
-  until Student 1 implements message handling.
+- `client/server_api.c` expects server responses to use the frozen protocol
+  contract. If Student 1 changes response shapes, update both sides together.
 - Hot-unplug behavior is required. Do not assume the share folder remains
   available after startup.
 
@@ -210,7 +192,8 @@ Student 3 owns `search/` and `docs/`.
 ### What Student 3 Should Work On Next
 
 1. Seed neighbors from registration responses.
-   - Student 2 receives `register_resp_t` during startup.
+   - Student 2 receives `register_resp_t` during startup, and Student 1 now
+     returns recent peers from the central server.
    - Student 3 should expose or coordinate an API that stores those peers in
      `neighbor_list_t`.
    - Avoid making the REPL or registration path block on flood setup.
@@ -220,6 +203,9 @@ Student 3 owns `search/` and `docs/`.
      first iteration.
    - Run listener logic in a dedicated thread.
    - Do not block the REPL or file transfers.
+   - Coordinate with Student 2 because the current transfer listener already
+     binds the client data port; distributed search needs shared peer-message
+     dispatch or a clearly documented alternate port.
 
 3. Implement query ID deduplication.
    - Use 64-bit random IDs represented as 16 hex chars.
@@ -360,10 +346,10 @@ Shared changes:
 
 ## Suggested Next Checkpoints
 
-Checkpoint 1: central server demo
+Checkpoint 1: central server demo — complete locally
 
-- Student 1 implements server `REGISTER` and `FIND`.
-- Student 2 verifies client registration and `find -s`.
+- Student 1 implemented server `REGISTER` and `FIND`.
+- Student 2 client registration and `find -s` are covered by integration tests.
 - Expected result: one client registers files, and another process can search
   through the server.
 
@@ -385,10 +371,11 @@ Final integration:
 
 ## Current Risks
 
-- Server message handling is still the main blocker for central search.
 - Distributed search has neighbor and aggregator scaffolding, but no flood
   implementation yet.
-- Transfer request, sender, receiver, and assembly are still stubs.
+- Search flood startup must coordinate with the existing transfer listener so
+  two subsystems do not compete for the same client data port.
+- Request peer discovery depends on cached displayed search results.
 - Protocol structs are frozen enough to proceed, but any future change will
   require coordinated updates across client, server, search, and tests.
 - The report exists, but content should be filled continuously to avoid a last
