@@ -43,7 +43,10 @@ TEST_BINS := \
 	$(BUILD_DIR)/tests/unit/test_registry \
 	$(BUILD_DIR)/tests/unit/test_query_handler
 
-.PHONY: all server client test docs clean
+INTEGRATION_TESTS := \
+	tests/integration/test_central_server_client.sh
+
+.PHONY: all server client test unit-test integration-test docs clean
 
 all: server client
 
@@ -88,11 +91,20 @@ $(BUILD_DIR)/%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-test: $(TEST_BINS)
+test: unit-test integration-test
+
+unit-test: $(TEST_BINS)
 	@set -e; \
 	for test_bin in $(TEST_BINS); do \
 		echo "==> $$test_bin"; \
 		$$test_bin; \
+	done
+
+integration-test: all
+	@set -e; \
+	for test_script in $(INTEGRATION_TESTS); do \
+		echo "==> $$test_script"; \
+		sh $$test_script; \
 	done
 
 docs:
