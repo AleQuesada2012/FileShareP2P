@@ -2,7 +2,7 @@
 
 P2P file-sharing simulator over TCP sockets for IC-6600 Principios de Sistemas Operativos, ITCR I Semestre 2026.
 
-This repository is currently aligned with **Phase 1 - Foundations** from `AGENTS.md`: shared interfaces, socket helpers, hashing, build targets, tests, and project skeletons are in place so the three implementation tracks can continue independently.
+This repository is now moving through **Phase 2 - Core features** from `AGENTS.md`: shared interfaces are frozen, the central server can register peers and answer searches, and the client can already use `find -s` against the server.
 
 ## Phase 1 Scope
 
@@ -83,14 +83,19 @@ Current runtime limitations:
 
 | Command or feature | Current behavior |
 |---|---|
-| Server registration handling | Stubbed in `server/query_handler.c` |
-| Server `FIND` handling | Stubbed in `server/query_handler.c` |
+| Server registration handling | Implemented in `server/query_handler.c` |
+| Server `FIND` handling | Implemented for filename search and `(S,H)` identity lookup |
 | Client startup scan | Implemented locally, then sends a `REGISTER` request to the server |
 | REPL `find -s <name>` | Sends a central-server `FIND` request and prints returned `(S, H, IP, port, name)` results |
 | REPL `find -d <name>` / `find <name>` | Parsed, but distributed search and fallback remain TODO |
 | REPL `request` command | Parsed as TODO message |
 | Segmented transfer | Stubbed with `ENOSYS` |
 | Distributed search flood | Stubbed with `ENOSYS` |
+
+For `request <S> <H>`, the frozen protocol uses the existing
+`P2P_MSG_FIND_REQ` / `P2P_MSG_FIND_RESP` exchange. Send `find_req_t.term` as
+`"<S> <H>"`, `"S=<S> H=<H>"`, or `"<S>:<H>"`; the server returns all peers
+whose file identity matches `size_bytes == S` and `hash == H`.
 
 ## Protocol Contract
 
@@ -115,8 +120,8 @@ Recommended next implementation work:
 
 | Owner | Next task |
 |---|---|
-| Student 1 | Implement `REGISTER` and `FIND` handling in `server/query_handler.c` using the frozen protocol |
-| Student 2 | Add the transfer listener thread and implement `request <S> <H>` segmented download flow |
+| Student 1 | Stress-test central server with 3+ clients and malformed inputs |
+| Student 2 | Add the transfer listener thread and implement `request <S> <H>` segmented download flow using server identity lookup |
 | Student 3 | Seed `search/neighbors.c` from `register_resp_t`, then implement flood receive/forward logic |
 
 Keep commits focused by ownership area. Changes to `common/` need extra care because all modules depend on it.

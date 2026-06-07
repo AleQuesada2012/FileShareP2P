@@ -18,13 +18,14 @@ Phase 1 foundations are mostly in place:
 - Unit tests exist for hashing, network framing, and a protocol round-trip.
 - Skeletons exist for server, client, transfer, search, and LaTeX docs.
 
-Early Phase 2 work has started:
+Phase 2 work has started:
 
 - The client scans the share folder at startup.
 - The client sends a `REGISTER` request after scanning.
 - The REPL supports `find -s <name>` by sending a central-server `FIND` request.
-- The server-side handler for `REGISTER` and `FIND` is still a stub, so full
-  end-to-end search is blocked on Student 1's server implementation.
+- The server-side handler for `REGISTER` and `FIND` is implemented.
+- The server can also use the existing `FIND` request to look up peers by file
+  identity for `request <S> <H>`.
 
 The most important integration boundary is still `common/protocol.h`. Do not
 change it casually. Any protocol change affects all three students.
@@ -38,7 +39,7 @@ change it casually. Any protocol change affects all three students.
 | `common/net.c/h` | Student 2 | TCP connect/listen and length-prefixed send/receive helpers | Implemented and tested |
 | `server/main.c` | Student 1 | Server startup, SIGPIPE handling, registry lifecycle | Implemented |
 | `server/registry.c/h` | Student 1 | Thread-safe in-memory peer registry and file lookup | Implemented scaffold with useful operations |
-| `server/query_handler.c/h` | Student 1 | Accept client messages and dispatch `REGISTER` / `FIND` | Stubbed |
+| `server/query_handler.c/h` | Student 1 | Accept client messages and dispatch `REGISTER` / `FIND` | Implemented |
 | `client/main.c` | Student 2 | Parse CLI, scan share folder, register with server, start REPL | Registration now wired |
 | `client/server_api.c/h` | Student 2 | Client-side protocol calls to central server | Implements `REGISTER` and `FIND` request paths |
 | `client/scanner.c/h` | Student 2 | Recursive folder scan and hash metadata creation | Implemented |
@@ -70,41 +71,27 @@ Student 1 owns `server/`, `common/hash.c`, and `common/protocol.h`.
   - The frame payload starts with `p2p_msg_header_t`.
   - Multi-byte integer fields must use network byte order on the wire.
 - `common/hash.c` implements FNV-1a hashing.
-- `server/registry.c` can register peers, search by filename substring, and
-  return recent peers.
+- `server/registry.c` can register peers, search by filename substring, search
+  by `(hash,size)`, and return recent peers.
 - `server/main.c` initializes the registry and starts the query server.
+- `server/query_handler.c` handles `REGISTER`, filename `FIND`, and identity
+  `FIND` using the frozen protocol.
 
 ### What Student 1 Should Work On Next
 
-1. Implement `server/query_handler.c`.
-   - Keep the existing `query_server_run(const char *port, registry_t *registry)`
-     interface.
-   - Call `accept` in a loop.
-   - Spawn or dispatch per-client work without blocking the entire server.
-   - Never crash if a client disconnects early or sends malformed data.
+1. Run 3+ client central-server stress tests.
+   - Confirm repeated registration updates the peer instead of duplicating it.
+   - Confirm the server keeps running after early disconnects and malformed
+     frames.
 
-2. Decode `P2P_MSG_REGISTER_REQ`.
-   - Read the full `p2p_msg_header_t + register_req_t` frame.
-   - Validate protocol version, opcode, and payload length.
-   - Decode network byte order fields.
-   - Register `(client_ip, data_port, files[])` in `registry_t`.
-   - Return `P2P_MSG_REGISTER_RESP` with recent peers, excluding the registering
-     peer.
+2. Coordinate the existing identity lookup convention with Student 2.
+   - `request <S> <H>` should use `P2P_MSG_FIND_REQ`.
+   - Populate `find_req_t.term` as `"<S> <H>"`, `"<S>:<H>"`, or
+     `"S=<S> H=<H>"`.
+   - The server returns matching peers in the normal `P2P_MSG_FIND_RESP`.
 
-3. Decode `P2P_MSG_FIND_REQ`.
-   - Search `registry_t` by term.
-   - Return `P2P_MSG_FIND_RESP` with `(S, H, IP, port, name)` metadata.
-
-4. Return `P2P_MSG_ERROR` for bad messages.
-   - Unknown opcode.
-   - Unsupported protocol version.
-   - Invalid payload length.
-   - Registry full or internal failure.
-
-5. Add tests.
-   - At minimum, add focused tests for registry behavior and protocol handler
-     behavior.
-   - Keep tests simple and readable.
+3. Keep adding focused tests for any new server edge cases discovered during
+   Student 2 and Student 3 integration.
 
 ### Student 1 Cautions
 
