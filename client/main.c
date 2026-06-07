@@ -3,6 +3,7 @@
 #include "client/server_api.h"
 #include "common/net.h"
 #include "common/protocol.h"
+#include "transfer/listener.h"
 
 #include <errno.h>
 #include <limits.h>
@@ -106,6 +107,11 @@ int main(int argc, char **argv)
     if (net_ignore_sigpipe() != 0) {
         perror("net_ignore_sigpipe");
         return 1;
+    }
+
+    if (transfer_listener_start(argv[3], ctx.share_folder) != 0) {
+        perror("transfer_listener_start");
+        fprintf(stderr, "Warning: incoming file transfers are disabled.\n");
     }
 
     if (scanner_scan_folder(ctx.share_folder, &scan) != 0) {

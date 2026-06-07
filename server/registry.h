@@ -32,8 +32,18 @@ size_t registry_find_by_name(registry_t *registry,
                              const char *term,
                              file_meta_t *results,
                              size_t capacity);
+size_t registry_find_by_identity(registry_t *registry,
+                                 uint64_t hash,
+                                 uint64_t size_bytes,
+                                 file_meta_t *results,
+                                 size_t capacity);
 size_t registry_recent_peers(registry_t *registry,
                              peer_entry_t *peers,
                              size_t capacity);
+size_t registry_recent_peers_except(registry_t *registry,
+                                    const char *exclude_ip,
+                                    uint16_t exclude_port,
+                                    peer_entry_t *peers,
+                                    size_t capacity);
 
 #endif

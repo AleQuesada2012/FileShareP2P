@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 static void copy_string(char *dst, size_t dst_size, const char *src)
 {
@@ -119,9 +120,50 @@ size_t registry_find_by_name(registry_t *registry,
     return copied;
 }
 
+size_t registry_find_by_identity(registry_t *registry,
+                                 uint64_t hash,
+                                 uint64_t size_bytes,
+                                 file_meta_t *results,
+                                 size_t capacity)
+{
+    size_t copied = 0u;
+    size_t i;
+
+    if (registry == NULL || (results == NULL && capacity > 0u)) {
+        errno = EINVAL;
+        return 0u;
+    }
+
+    if (pthread_mutex_lock(&registry->lock) != 0) {
+        return 0u;
+    }
+
+    for (i = 0u; i < registry->peer_count && copied < capacity; ++i) {
+        size_t j;
+        for (j = 0u; j < registry->peers[i].file_count && copied < capacity; ++j) {
+            const file_meta_t *file = &registry->peers[i].files[j];
+            if (file->hash == hash && file->size_bytes == size_bytes) {
+                results[copied++] = *file;
+            }
+        }
+    }
+
+    (void)pthread_mutex_unlock(&registry->lock);
+    return copied;
+}
+
 size_t registry_recent_peers(registry_t *registry,
                              peer_entry_t *peers,
                              size_t capacity)
+{
+    return registry_recent_peers_except(registry, NULL, 0u, peers, capacity);
+}
+
+size_t registry_recent_peers_except(registry_t *registry,
+                                    const char *exclude_ip,
+                                    uint16_t exclude_port,
+                                    peer_entry_t *peers,
+                                    size_t capacity)
 {
     size_t copied = 0u;
     size_t i;
@@ -138,6 +180,11 @@ size_t registry_recent_peers(registry_t *registry,
     i = registry->peer_count;
     while (i > 0u && copied < capacity) {
         --i;
+        if (exclude_ip != NULL &&
+            strcmp(registry->peers[i].peer.ip, exclude_ip) == 0 &&
+            registry->peers[i].peer.data_port == exclude_port) {
+            continue;
+        }
         peers[copied++] = registry->peers[i].peer;
     }
 
