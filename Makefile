@@ -1,7 +1,7 @@
 CC ?= cc
 UNAME_S := $(shell uname -s)
 
-CPPFLAGS += -I. -D_POSIX_C_SOURCE=200809L
+CPPFLAGS += -I. -D_POSIX_C_SOURCE=200809L -D_XOPEN_SOURCE=700
 ifeq ($(UNAME_S),Darwin)
 CPPFLAGS += -D_DARWIN_C_SOURCE
 endif
@@ -39,9 +39,14 @@ CLIENT_OBJS := \
 TEST_BINS := \
 	$(BUILD_DIR)/tests/unit/test_hash \
 	$(BUILD_DIR)/tests/unit/test_net \
-	$(BUILD_DIR)/tests/unit/test_protocol_roundtrip
+	$(BUILD_DIR)/tests/unit/test_protocol_roundtrip \
+	$(BUILD_DIR)/tests/unit/test_registry \
+	$(BUILD_DIR)/tests/unit/test_query_handler
 
-.PHONY: all server client test docs clean
+INTEGRATION_TESTS := \
+	tests/integration/test_central_server_client.sh
+
+.PHONY: all server client test unit-test integration-test docs clean
 
 all: server client
 
@@ -69,15 +74,37 @@ $(BUILD_DIR)/tests/unit/test_protocol_roundtrip: $(BUILD_DIR)/tests/unit/test_pr
 	@mkdir -p $(dir $@)
 	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
 
+$(BUILD_DIR)/tests/unit/test_registry: $(BUILD_DIR)/tests/unit/test_registry.o $(BUILD_DIR)/server/registry.o
+	@mkdir -p $(dir $@)
+	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
+
+$(BUILD_DIR)/tests/unit/test_query_handler: \
+	$(BUILD_DIR)/tests/unit/test_query_handler.o \
+	$(BUILD_DIR)/client/server_api.o \
+	$(BUILD_DIR)/common/net.o \
+	$(BUILD_DIR)/server/query_handler.o \
+	$(BUILD_DIR)/server/registry.o
+	@mkdir -p $(dir $@)
+	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
+
 $(BUILD_DIR)/%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-test: $(TEST_BINS)
+test: unit-test integration-test
+
+unit-test: $(TEST_BINS)
 	@set -e; \
 	for test_bin in $(TEST_BINS); do \
 		echo "==> $$test_bin"; \
 		$$test_bin; \
+	done
+
+integration-test: all
+	@set -e; \
+	for test_script in $(INTEGRATION_TESTS); do \
+		echo "==> $$test_script"; \
+		sh $$test_script; \
 	done
 
 docs:
