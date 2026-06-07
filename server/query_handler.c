@@ -139,6 +139,107 @@ static void encode_peer(peer_entry_t *dst, const peer_entry_t *src)
     dst->last_seen_epoch = host_to_net64(src->last_seen_epoch);
 }
 
+static int parse_uint64_token(const char *text, const char **next_out, uint64_t *value_out)
+{
+    char *end = NULL;
+    unsigned long long value;
+
+    if (text == NULL || value_out == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    errno = 0;
+    value = strtoull(text, &end, 10);
+    if (errno != 0 || end == text) {
+        return -1;
+    }
+
+    *value_out = (uint64_t)value;
+    if (next_out != NULL) {
+        *next_out = end;
+    }
+    return 0;
+}
+
+static const char *skip_identity_separator(const char *text)
+{
+    while (*text == ' ' || *text == '\t' || *text == ':' || *text == ',' || *text == ';') {
+        ++text;
+    }
+    return text;
+}
+
+static int parse_identity_find_term(const char *term, uint64_t *size_out, uint64_t *hash_out)
+{
+    const char *cursor = term;
+    uint64_t first;
+    uint64_t second;
+
+    if (term == NULL || size_out == NULL || hash_out == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (strncmp(cursor, "S=", 2u) == 0 || strncmp(cursor, "s=", 2u) == 0) {
+        cursor += 2;
+        if (parse_uint64_token(cursor, &cursor, &first) != 0) {
+            return -1;
+        }
+        cursor = skip_identity_separator(cursor);
+        if (strncmp(cursor, "H=", 2u) == 0 || strncmp(cursor, "h=", 2u) == 0) {
+            cursor += 2;
+        }
+        if (parse_uint64_token(cursor, &cursor, &second) != 0) {
+            return -1;
+        }
+        cursor = skip_identity_separator(cursor);
+        if (*cursor != '\0') {
+            return -1;
+        }
+        *size_out = first;
+        *hash_out = second;
+        return 0;
+    }
+
+    if (strncmp(cursor, "H=", 2u) == 0 || strncmp(cursor, "h=", 2u) == 0) {
+        cursor += 2;
+        if (parse_uint64_token(cursor, &cursor, &first) != 0) {
+            return -1;
+        }
+        cursor = skip_identity_separator(cursor);
+        if (strncmp(cursor, "S=", 2u) == 0 || strncmp(cursor, "s=", 2u) == 0) {
+            cursor += 2;
+        }
+        if (parse_uint64_token(cursor, &cursor, &second) != 0) {
+            return -1;
+        }
+        cursor = skip_identity_separator(cursor);
+        if (*cursor != '\0') {
+            return -1;
+        }
+        *hash_out = first;
+        *size_out = second;
+        return 0;
+    }
+
+    if (parse_uint64_token(cursor, &cursor, &first) != 0) {
+        return -1;
+    }
+    cursor = skip_identity_separator(cursor);
+    if (parse_uint64_token(cursor, &cursor, &second) != 0) {
+        return -1;
+    }
+    cursor = skip_identity_separator(cursor);
+    if (*cursor != '\0') {
+        return -1;
+    }
+
+    *size_out = first;
+    *hash_out = second;
+    return 0;
+}
+
 static int send_error(int fd, p2p_error_code_t code, const char *message)
 {
     error_frame_t frame;
@@ -201,13 +302,23 @@ static int handle_find(int fd, registry_t *registry, const find_req_t *payload)
     size_t result_count;
     size_t i;
     char term[P2P_MAX_TERM];
+    uint64_t identity_size;
+    uint64_t identity_hash;
 
     copy_cstr(term, sizeof(term), payload->term);
     if (term[0] == '\0') {
         return send_error(fd, P2P_ERROR_BAD_REQUEST, "find term is empty");
     }
 
-    result_count = registry_find_by_name(registry, term, results, P2P_MAX_RESULTS);
+    if (parse_identity_find_term(term, &identity_size, &identity_hash) == 0) {
+        result_count = registry_find_by_identity(registry,
+                                                 identity_hash,
+                                                 identity_size,
+                                                 results,
+                                                 P2P_MAX_RESULTS);
+    } else {
+        result_count = registry_find_by_name(registry, term, results, P2P_MAX_RESULTS);
+    }
 
     memset(&response, 0, sizeof(response));
     encode_header(&response.header, P2P_MSG_FIND_RESP, (uint32_t)sizeof(response.payload));

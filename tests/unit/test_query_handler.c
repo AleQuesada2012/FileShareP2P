@@ -150,6 +150,7 @@ int main(void)
     registry_t registry;
     scan_result_t scan;
     scan_result_t second_scan;
+    scan_result_t third_scan;
     register_resp_t register_response;
     search_results_t results;
 
@@ -187,13 +188,37 @@ int main(void)
     require(register_response.neighbor_count == 1u);
     require(register_response.neighbors[0].data_port == 7001u);
 
+    memset(&third_scan, 0, sizeof(third_scan));
+    third_scan.count = 1u;
+    third_scan.files[0] = make_file("movie-copy.mp4", UINT64_C(0x1234), UINT64_C(4096));
+
+    memset(&register_response, 0, sizeof(register_response));
+    require(server_register_files("127.0.0.1", TEST_SERVER_PORT, 7003u, &third_scan, &register_response) == 0);
+    require(register_response.neighbor_count == 2u);
+
     memset(&results, 0, sizeof(results));
     require(server_find_files("127.0.0.1", TEST_SERVER_PORT, "movie", &results) == 0);
-    require(results.count == 1u);
+    require(results.count == 2u);
     require(strcmp(results.items[0].name, "movie.mp4") == 0);
     require(results.items[0].hash == UINT64_C(0x1234));
     require(results.items[0].size_bytes == UINT64_C(4096));
     require(results.items[0].owner_port == 7001u);
+    require(strcmp(results.items[1].name, "movie-copy.mp4") == 0);
+    require(results.items[1].owner_port == 7003u);
+
+    memset(&results, 0, sizeof(results));
+    require(server_find_files("127.0.0.1", TEST_SERVER_PORT, "4096 4660", &results) == 0);
+    require(results.count == 2u);
+    require(results.items[0].owner_port == 7001u);
+    require(results.items[1].owner_port == 7003u);
+
+    memset(&results, 0, sizeof(results));
+    require(server_find_files("127.0.0.1", TEST_SERVER_PORT, "S=4096 H=4660", &results) == 0);
+    require(results.count == 2u);
+
+    memset(&results, 0, sizeof(results));
+    require(server_find_files("127.0.0.1", TEST_SERVER_PORT, "H=4660 S=4096", &results) == 0);
+    require(results.count == 2u);
 
     expect_header_error(999u,
                         (uint16_t)P2P_PROTOCOL_VERSION,

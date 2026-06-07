@@ -29,10 +29,13 @@ Early Phase 2 work now works end to end for centralized discovery and transfer:
 - The server accepts `REGISTER` and `FIND`, updates the registry, returns recent
   peers on registration, and returns matching file metadata on centralized
   search.
+- The server also accepts `(S,H)` identity lookup through the existing `FIND`
+  request, so clients can ask for all peers holding a specific file identity.
 - The REPL supports `request <S> <H>` using peers cached from the latest search
   result, and the transfer layer can download and assemble the requested file.
 - Integration tests cover central registration/search and central
-  search-to-transfer download.
+  search-to-transfer download, including identity search followed by
+  `request <S> <H>`.
 
 The most important integration boundary is still `common/protocol.h`. Do not
 change it casually. Any protocol change affects all three students.
@@ -46,7 +49,7 @@ change it casually. Any protocol change affects all three students.
 | `common/net.c/h` | Student 2 | TCP connect/listen and length-prefixed send/receive helpers | Implemented and tested |
 | `server/main.c` | Student 1 | Server startup, SIGPIPE handling, registry lifecycle | Implemented |
 | `server/registry.c/h` | Student 1 | Thread-safe in-memory peer registry and file lookup | Implements registration, name lookup, identity lookup, recent peers, and recent peers excluding the registering peer |
-| `server/query_handler.c/h` | Student 1 | Accept client messages and dispatch `REGISTER` / `FIND` | Implements threaded `REGISTER`, `FIND`, and `ERROR` handling |
+| `server/query_handler.c/h` | Student 1 | Accept client messages and dispatch `REGISTER` / `FIND` | Implements threaded `REGISTER`, filename `FIND`, identity `FIND`, and `ERROR` handling |
 | `client/main.c` | Student 2 | Parse CLI, scan share folder, register with server, start REPL | Registration now wired |
 | `client/server_api.c/h` | Student 2 | Client-side protocol calls to central server | Implements `REGISTER` and `FIND` request paths |
 | `client/scanner.c/h` | Student 2 | Recursive folder scan and hash metadata creation | Implemented |
@@ -85,7 +88,8 @@ Student 1 owns `server/`, `common/hash.c`, and `common/protocol.h`.
   registering peer.
 - `server/query_handler.c` accepts client connections, spawns per-client
   threads, decodes `REGISTER` / `FIND`, sends `REGISTER_RESP` / `FIND_RESP`,
-  and returns `ERROR` for bad messages.
+  supports identity lookup through the existing `FIND` request, and returns
+  `ERROR` for bad messages.
 - `server/main.c` initializes the registry and starts the query server.
 - Tests cover registry behavior, query handler behavior, malformed messages,
   disconnect safety, and a central client/server smoke run.
@@ -98,7 +102,14 @@ Student 1 owns `server/`, `common/hash.c`, and `common/protocol.h`.
    - Confirm recent-peer ordering remains useful for Student 3 neighbor seeding.
    - Confirm malformed or disconnected clients do not stop the server loop.
 
-2. Coordinate any future protocol change with Students 2 and 3.
+2. Coordinate the identity lookup convention with Students 2 and 3.
+   - `request <S> <H>` can use `P2P_MSG_FIND_REQ` if the client needs to refresh
+     peers by identity.
+   - Populate `find_req_t.term` as `"<S> <H>"`, `"<S>:<H>"`, `"S=<S> H=<H>"`,
+     or `"H=<H> S=<S>"`.
+   - The server returns matching peers in the normal `P2P_MSG_FIND_RESP`.
+
+3. Coordinate any future protocol change with Students 2 and 3.
    - The current protocol is sufficient for centralized registration/search.
    - Changes to `common/protocol.h` should remain rare and heavily tested.
 
@@ -146,12 +157,15 @@ Student 2 owns `client/`, `transfer/`, and `common/net.c`.
   `download_<S>_<H>.bin` file into the share folder.
 - Integration coverage now verifies that one client can register a file, another
   client can find it through the central server, and `request <S> <H>` downloads
-  it through the transfer path.
+  it through the transfer path. A newer identity-search integration test also
+  verifies `find -s <S> <H>` followed by `request <S> <H>`.
 
 ### What Student 2 Should Work On Next
 
 1. Improve request peer discovery once more search modes are available.
    - Current `request <S> <H>` uses cached results from the latest `find -s`.
+   - Student 1's server can now refresh peers by identity through
+     `server_find_files` using terms like `"<S> <H>"` or `"S=<S> H=<H>"`.
    - Once `find -d` and plain `find` are wired, request should accept cached
      results from whichever search mode last displayed matching peers.
 

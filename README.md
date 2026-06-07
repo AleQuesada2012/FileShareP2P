@@ -2,7 +2,7 @@
 
 P2P file-sharing simulator over TCP sockets for IC-6600 Principios de Sistemas Operativos, ITCR I Semestre 2026.
 
-This repository now has the Phase 1 foundations plus the central-server and transfer pieces needed for early Phase 2 integration: clients can register, run centralized search, and request a found file from another peer.
+This repository now has the Phase 1 foundations plus the central-server and transfer pieces needed for early Phase 2 integration: clients can register, run centralized search, look up peers by file identity, and request a found file from another peer.
 
 ## Phase 1 Scope
 
@@ -84,7 +84,7 @@ Current runtime limitations:
 | Command or feature | Current behavior |
 |---|---|
 | Server registration handling | Accepts `REGISTER` requests, stores peer metadata, and returns recent peers |
-| Server `FIND` handling | Accepts centralized `FIND` requests and returns matching `(S, H, IP, port, name)` results |
+| Server `FIND` handling | Accepts filename searches and `(S,H)` identity lookups, returning matching `(S, H, IP, port, name)` results |
 | Client startup scan | Implemented locally, then sends a `REGISTER` request to the server |
 | REPL `find -s <name>` | Sends a central-server `FIND` request and prints returned `(S, H, IP, port, name)` results |
 | REPL `find -d <name>` / `find <name>` | Parsed, but distributed search and fallback remain TODO |
@@ -93,6 +93,11 @@ Current runtime limitations:
 | Transfer sender | Sends requested byte ranges as `TRANSFER_DATA` frames |
 | Transfer receiver / file assembly | Splits ranges across peers and assembles a completed file |
 | Distributed search flood | Stubbed with `ENOSYS` |
+
+For `request <S> <H>`, the frozen protocol uses the existing
+`P2P_MSG_FIND_REQ` / `P2P_MSG_FIND_RESP` exchange. Send `find_req_t.term` as
+`"<S> <H>"`, `"S=<S> H=<H>"`, or `"<S>:<H>"`; the server returns all peers
+whose file identity matches `size_bytes == S` and `hash == H`.
 
 ## Protocol Contract
 
@@ -118,7 +123,7 @@ Recommended next implementation work:
 | Owner | Next task |
 |---|---|
 | Student 1 | Stress-test server registration and `FIND` with 3+ clients |
-| Student 2 | Finish plain `find <name>` fallback and hot-unplug validation |
+| Student 2 | Optionally refresh `request <S> <H>` peers through identity `FIND`; finish plain `find <name>` fallback and hot-unplug validation |
 | Student 3 | Seed `search/neighbors.c` from `register_resp_t`, then implement flood receive/forward logic |
 
 Keep commits focused by ownership area. Changes to `common/` need extra care because all modules depend on it.

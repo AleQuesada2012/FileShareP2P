@@ -48,7 +48,8 @@ TEST_BINS := \
 
 INTEGRATION_TESTS := \
 	tests/integration/test_central_server_client.sh \
-	tests/integration/test_central_request_transfer.sh
+	tests/integration/test_central_request_transfer.sh \
+	tests/integration/test_identity_request_transfer.sh
 
 .PHONY: all server client test unit-test integration-test docs clean
 
