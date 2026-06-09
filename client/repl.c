@@ -8,13 +8,14 @@
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "search/neighbors.h"
 #include <string.h>
 
 static void print_help(void)
 {
     puts("Commands:");
     puts("  find -s <name>       search through central server");
-    puts("  find -d <name>       distributed neighbor search (TODO)");
+    puts("  find -d <name>       distributed neighbor search");
     puts("  find <name>          server first, then distributed fallback (TODO)");
     puts("  request <S> <H>      request file by size and hash");
     puts("  help                 show this help");
@@ -154,9 +155,25 @@ static void handle_find_command(const repl_context_t *ctx,
     }
 
     if (strncmp(term, "-d", 2u) == 0 && (term[2] == '\0' || isspace((unsigned char)term[2]))) {
-        puts("TODO: distributed search is not implemented yet.");
+        term = skip_spaces(term + 2);
+        if (*term == '\0') {
+            fprintf(stderr, "Usage: find -d <name>\n");
+            return;
+        }
+
+        printf("Iniciando búsqueda P2P en la red distribuida...\n");
+        if (search_distributed(term, ctx->ttl, ctx->search_timeout_ms, &results) != 0) {
+            perror("search_distributed failed");
+            return;
+        }
+
+        print_find_results(&results);
+        if (last_results != NULL) {
+            *last_results = results;
+        }
         return;
     }
+
 
     if (*term == '\0') {
         fprintf(stderr, "Usage: find [-s|-d] <name>\n");
@@ -185,7 +202,7 @@ static void handle_request_command(const repl_context_t *ctx,
 
     peer_count = collect_cached_peers(last_results, size, hash, peers, P2P_MAX_RESULTS);
     if (peer_count == 0u) {
-        fprintf(stderr, "No cached peers for S=%llu H=%llu. Run find -s <name> first.\n",
+        fprintf(stderr, "No cached peers for S=%llu H=%llu. Run find -s or find -d first.\n",
                 (unsigned long long)size,
                 (unsigned long long)hash);
         return;

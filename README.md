@@ -2,7 +2,7 @@
 
 P2P file-sharing simulator over TCP sockets for IC-6600 Principios de Sistemas Operativos, ITCR I Semestre 2026.
 
-This repository now has the Phase 1 foundations plus the central-server and transfer pieces needed for early Phase 2 integration: clients can register, run centralized search, look up peers by file identity, and request a found file from another peer.
+This repository now has the Phase 1 foundations plus the main Phase 2 discovery and transfer pieces: clients can register, run centralized search, run distributed `find -d`, look up peers by file identity, and request a found file from another peer.
 
 ## Phase 1 Scope
 
@@ -72,7 +72,7 @@ make clean
 
 ## Running The Current Binaries
 
-The binaries compile, and central-server search plus transfer are available for local integration testing. Distributed search is still under development.
+The binaries compile, and central-server search, distributed `find -d`, and transfer are available for local integration testing. Plain `find <name>` fallback is still under development.
 
 ```sh
 build/server/p2p-server <listen_port>
@@ -87,12 +87,13 @@ Current runtime limitations:
 | Server `FIND` handling | Accepts filename searches and `(S,H)` identity lookups, returning matching `(S, H, IP, port, name)` results |
 | Client startup scan | Implemented locally, then sends a `REGISTER` request to the server |
 | REPL `find -s <name>` | Sends a central-server `FIND` request and prints returned `(S, H, IP, port, name)` results |
-| REPL `find -d <name>` / `find <name>` | Parsed, but distributed search and fallback remain TODO |
+| REPL `find -d <name>` | Sends a distributed flood query to known neighbors and prints collected results |
+| REPL `find <name>` | Parsed, but server-first fallback remains TODO |
 | REPL `request <S> <H>` | Uses cached search results, downloads segments, and writes `download_<S>_<H>.bin` |
 | Incoming transfer listener | Starts on the client data port and accepts `TRANSFER_REQ` messages |
 | Transfer sender | Sends requested byte ranges as `TRANSFER_DATA` frames |
 | Transfer receiver / file assembly | Splits ranges across peers and assembles a completed file |
-| Distributed search flood | Stubbed with `ENOSYS` |
+| Distributed search flood | Runs on `data_port + 100`, forwards query messages with TTL, deduplicates query IDs, and aggregates responses |
 
 For `request <S> <H>`, the frozen protocol uses the existing
 `P2P_MSG_FIND_REQ` / `P2P_MSG_FIND_RESP` exchange. Send `find_req_t.term` as
@@ -124,7 +125,7 @@ Recommended next implementation work:
 |---|---|
 | Student 1 | Stress-test server registration and `FIND` with 3+ clients |
 | Student 2 | Optionally refresh `request <S> <H>` peers through identity `FIND`; finish plain `find <name>` fallback and hot-unplug validation |
-| Student 3 | Seed `search/neighbors.c` from `register_resp_t`, then implement flood receive/forward logic |
+| Student 3 | Harden distributed search for multi-hop LAN runs and document TTL/window behavior |
 
 Keep commits focused by ownership area. Changes to `common/` need extra care because all modules depend on it.
 

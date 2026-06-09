@@ -21,11 +21,14 @@ Phase 1 foundations are mostly in place:
 - Unit tests exist for hashing, network framing, and a protocol round-trip.
 - Skeletons exist for server, client, transfer, search, and LaTeX docs.
 
-Early Phase 2 work now works end to end for centralized discovery and transfer:
+Early Phase 2 work now works end to end for centralized discovery, distributed
+`find -d`, and transfer:
 
 - The client scans the share folder at startup.
 - The client sends a `REGISTER` request after scanning.
 - The REPL supports `find -s <name>` by sending a central-server `FIND` request.
+- The REPL supports `find -d <name>` by sending a distributed flood query to
+  known neighbors and printing collected responses.
 - The server accepts `REGISTER` and `FIND`, updates the registry, returns recent
   peers on registration, and returns matching file metadata on centralized
   search.
@@ -35,6 +38,7 @@ Early Phase 2 work now works end to end for centralized discovery and transfer:
   result, and the transfer layer can download and assemble the requested file.
 - Integration tests cover central registration/search and central
   search-to-transfer download, including identity search followed by
+  `request <S> <H>`, distributed search, and distributed search followed by
   `request <S> <H>`.
 
 The most important integration boundary is still `common/protocol.h`. Do not
@@ -53,13 +57,13 @@ change it casually. Any protocol change affects all three students.
 | `client/main.c` | Student 2 | Parse CLI, scan share folder, register with server, start REPL | Registration now wired |
 | `client/server_api.c/h` | Student 2 | Client-side protocol calls to central server | Implements `REGISTER` and `FIND` request paths |
 | `client/scanner.c/h` | Student 2 | Recursive folder scan and hash metadata creation | Implemented |
-| `client/repl.c/h` | Student 2 | Interactive commands | `find -s` and `request <S> <H>` wired; `find -d` and plain `find` still incomplete |
+| `client/repl.c/h` | Student 2 | Interactive commands | `find -s`, `find -d`, and `request <S> <H>` wired; plain `find` fallback still incomplete |
 | `transfer/listener.c/h` | Student 2 | Accept incoming transfer requests on the client data port | Implemented listener thread and per-request dispatch |
 | `transfer/sender.c/h` | Student 2 | Send requested byte ranges to peers | Sends `TRANSFER_DATA` frames for validated byte ranges |
 | `transfer/receiver.c/h` | Student 2 | Request segments, collect them, assemble file | Splits ranges across peers and assembles into the share folder |
-| `search/neighbors.c/h` | Student 3 | Neighbor list management and distributed-search API boundary | Neighbor list works; `search_distributed` stubbed |
-| `search/flood.c/h` | Student 3 | Flood listener, query forwarding, TTL behavior | Stubbed |
-| `search/aggregator.c/h` | Student 3 | Collect distributed search responses | Basic thread-safe aggregator implemented |
+| `search/neighbors.c/h` | Student 3 | Neighbor list management and distributed-search API boundary | Neighbor list works; `search_distributed` builds query IDs, floods to neighbors, waits for responses, and returns collected results |
+| `search/flood.c/h` | Student 3 | Flood listener, query forwarding, TTL behavior | Starts a TCP listener on `data_port + 100`, handles `QUERY_FLOOD` / `QUERY_RESULT`, deduplicates query IDs, searches local files, and forwards with TTL |
+| `search/aggregator.c/h` | Student 3 | Collect distributed search responses | Basic thread-safe aggregator implemented and used by distributed search |
 | `docs/` | Student 3 | LaTeX report | Skeleton exists |
 | `tests/unit/` | All | Unit and smoke tests for shared behavior | Hash, net, protocol, registry, query handler, and transfer tests exist |
 | `tests/integration/` | All | Local smoke tests for process-level behavior | Central server/client search and central search-to-transfer download tests exist |
@@ -147,8 +151,9 @@ Student 2 owns `client/`, `transfer/`, and `common/net.c`.
   - central-server `FIND` for `find -s`
 - `client/repl.c` supports:
   - `find -s <name>` through the central server
+  - `find -d <name>` through Student 3's distributed search path
   - `request <S> <H>` using peers cached from the latest search result
-  - TODO messages for distributed search and server-first fallback
+  - TODO messages for server-first fallback
 - `transfer/listener.c` starts a detached listener on the client data port.
 - `transfer/sender.c` locates local files by `(hash, size)` and sends requested
   byte ranges as `P2P_MSG_TRANSFER_DATA` frames.
@@ -156,14 +161,16 @@ Student 2 owns `client/`, `transfer/`, and `common/net.c`.
   `P2P_MSG_TRANSFER_DATA` frames concurrently, and writes a completed
   `download_<S>_<H>.bin` file into the share folder.
 - Integration coverage now verifies that one client can register a file, another
-  client can find it through the central server, and `request <S> <H>` downloads
-  it through the transfer path. A newer identity-search integration test also
-  verifies `find -s <S> <H>` followed by `request <S> <H>`.
+  client can find it through the central server, distributed search can find it
+  through `find -d`, and `request <S> <H>` downloads it through the transfer
+  path. Newer integration tests verify both identity-search-to-request and
+  distributed-search-to-request flows.
 
 ### What Student 2 Should Work On Next
 
 1. Improve request peer discovery once more search modes are available.
-   - Current `request <S> <H>` uses cached results from the latest `find -s`.
+   - Current `request <S> <H>` uses cached results from the latest displayed
+     `find -s` or `find -d`.
    - Student 1's server can now refresh peers by identity through
      `server_find_files` using terms like `"<S> <H>"` or `"S=<S> H=<H>"`.
    - Once `find -d` and plain `find` are wired, request should accept cached
@@ -195,56 +202,45 @@ Student 3 owns `search/` and `docs/`.
   - neighbor list initialization and destruction
   - adding/updating a peer
   - copying a snapshot of known peers
+- `search_distributed` builds a query ID, sends the query through the flood
+  module, waits for the configured timeout, and returns aggregated results.
 - `search/aggregator.c` implements:
   - initialization and destruction
   - adding a result
   - collecting a snapshot of results
-- `search/flood.c` is currently stubbed.
-- `search_distributed` in `search/neighbors.c` is currently stubbed.
+- `search/flood.c` implements:
+  - a TCP listener on `data_port + 100`
+  - `P2P_MSG_QUERY_FLOOD` handling
+  - local share-folder scanning for matches
+  - `P2P_MSG_QUERY_RESULT` response handling
+  - query ID deduplication with expiry
+  - TTL-limited forwarding to known neighbors
 - `docs/main.tex` and report sections exist as a LaTeX shell.
 
 ### What Student 3 Should Work On Next
 
-1. Seed neighbors from registration responses.
-   - Student 2 receives `register_resp_t` during startup, and Student 1 now
-     returns recent peers from the central server.
-   - Student 3 should expose or coordinate an API that stores those peers in
-     `neighbor_list_t`.
-   - Avoid making the REPL or registration path block on flood setup.
+1. Harden distributed search beyond the current local two-client smoke tests.
+   - Run three or more clients and confirm multi-hop forwarding works.
+   - Verify TTL expiration prevents uncontrolled propagation.
+   - Verify duplicate query IDs are discarded under repeated or cyclic delivery.
 
-2. Implement flood listener startup.
-   - Use the team decision from `protocol.h`: TCP for distributed search in this
-     first iteration.
-   - Run listener logic in a dedicated thread.
-   - Do not block the REPL or file transfers.
-   - Coordinate with Student 2 because the current transfer listener already
-     binds the client data port; distributed search needs shared peer-message
-     dispatch or a clearly documented alternate port.
+2. Align the distributed-search port strategy with the final architecture.
+   - Current implementation listens on `data_port + 100` for flood messages
+     while transfer uses `data_port`.
+   - If the final design requires one peer listener per process, coordinate with
+     Student 2 before changing the dispatch path.
 
-3. Implement query ID deduplication.
-   - Use 64-bit random IDs represented as 16 hex chars.
-   - Store seen IDs with expiry.
-   - Ignore repeated queries.
-   - Expire IDs after the configured window, currently specified as 60 seconds
-     in the plan.
+3. Improve protocol serialization in distributed results if testing moves
+   beyond same-host/same-endian runs.
+   - `QUERY_RESULT` should consistently encode/decode all multi-byte
+     `file_meta_t` fields in network byte order.
 
-4. Implement forwarding.
-   - Decrement TTL.
-   - Do not forward to the sender.
-   - Stop forwarding when TTL reaches zero.
-   - Cap TTL at `P2P_MAX_TTL`.
+4. Wire and test plain `find <name>` fallback with Student 2.
+   - Try the server first.
+   - Fall back to `search_distributed` if the server fails or returns no
+     results.
 
-5. Implement local search for distributed queries.
-   - Scan or maintain metadata for the local share folder.
-   - If files match, respond directly to the originator.
-
-6. Implement `search_distributed`.
-   - Build `query_msg_t`.
-   - Send it to known neighbors.
-   - Collect responses through the aggregator for the configured timeout.
-   - Return results in the same shape expected by the REPL.
-
-7. Keep the LaTeX report alive.
+5. Keep the LaTeX report alive.
    - Update architecture decisions as implementation changes.
    - Document TTL reasoning and empirical behavior.
    - Record challenges and conclusions during development, not only at the end.
@@ -367,10 +363,10 @@ Checkpoint 1: central server demo — complete locally
 - Expected result: one client registers files, and another process can search
   through the server.
 
-Checkpoint 2: distributed search and transfer demo
+Checkpoint 2: distributed search and transfer demo — local two-client version complete
 
-- Student 3 implements flood search.
-- Student 2 implements segmented transfer.
+- Student 3 implemented local distributed `find -d`.
+- Student 2 implemented segmented transfer.
 - Expected result: `find -d` returns results, and `request <S> <H>` downloads
   and reassembles a file from multiple peers.
 
@@ -385,11 +381,12 @@ Final integration:
 
 ## Current Risks
 
-- Distributed search has neighbor and aggregator scaffolding, but no flood
-  implementation yet.
-- Search flood startup must coordinate with the existing transfer listener so
-  two subsystems do not compete for the same client data port.
+- Distributed search is implemented for local two-client smoke tests, but still
+  needs multi-hop and LAN hardening.
+- Search flood currently uses `data_port + 100`; this avoids competing with the
+  transfer listener but should be documented or revisited before final demo.
 - Request peer discovery depends on cached displayed search results.
+- Plain `find <name>` fallback is still not implemented.
 - Protocol structs are frozen enough to proceed, but any future change will
   require coordinated updates across client, server, search, and tests.
 - The report exists, but content should be filled continuously to avoid a last

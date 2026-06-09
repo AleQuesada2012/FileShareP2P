@@ -1,8 +1,15 @@
 #include "search/neighbors.h"
+#include "search/aggregator.h"
+#include "search/flood.h"
 
 #include <errno.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
+
+response_aggregator_t global_aggregator;
+extern flood_config_t global_flood_config;
 
 int neighbors_init(neighbor_list_t *neighbors)
 {
@@ -79,14 +86,50 @@ size_t neighbors_snapshot(neighbor_list_t *neighbors, peer_entry_t *out, size_t 
     return copied;
 }
 
-int search_distributed(const char *term, search_results_t *results_out)
+static void generate_query_id(char *buffer) {
+    const char *hex = "0123456789abcdef";
+    srand((unsigned int)time(NULL) ^ (unsigned int)getpid());
+    for (unsigned int i = 0; i < P2P_MAX_QUERY_ID - 1; i++) {
+        buffer[i] = hex[rand() % 16];
+    }
+    buffer[P2P_MAX_QUERY_ID - 1] = '\0';
+}
+
+int search_distributed(const char *term, uint8_t ttl, unsigned timeout_ms, search_results_t *results_out)
 {
     if (term == NULL || results_out == NULL) {
         errno = EINVAL;
         return -1;
     }
 
-    memset(results_out, 0, sizeof(*results_out));
-    errno = ENOSYS;
-    return -1;
+    // Preparar el agregador global para una nueva búsqueda
+    aggregator_destroy(&global_aggregator); // Limpiamos por si había basura de otra búsqueda
+    aggregator_init(&global_aggregator);
+
+    query_msg_t query;
+    memset(&query, 0, sizeof(query));
+    generate_query_id(query.query_id);
+    strncpy(query.term, term, P2P_MAX_TERM - 1);
+
+    // (Opcional) Si en el futuro sacas la IP y puerto del context, reemplazas esto:
+    strncpy(query.origin_ip, global_flood_config.node_ip, P2P_MAX_IP_LEN - 1);
+    query.origin_port = htons(global_flood_config.listen_port);
+    query.ttl = ttl;
+
+    // Crear sender vacío para la propagación
+    peer_entry_t dummy_sender;
+    memset(&dummy_sender, 0, sizeof(dummy_sender));
+
+    // Propagar a la red a través de tu módulo flood
+    if (flood_forward_query(&query, &dummy_sender) != 0) {
+        return -1;
+    }
+
+    // Congelar este hilo el tiempo exacto del timeout (usleep usa microsegundos)
+    usleep(timeout_ms * 1000);
+
+    // Finalizó el tiempo. Recolectamos todo lo que el hilo receptor haya depositado
+    aggregator_collect(&global_aggregator, results_out);
+
+    return 0;
 }
