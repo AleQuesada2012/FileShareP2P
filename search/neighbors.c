@@ -2,6 +2,7 @@
 #include "search/aggregator.h"
 #include "search/flood.h"
 
+#include <arpa/inet.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
@@ -95,6 +96,17 @@ static void generate_query_id(char *buffer) {
     buffer[P2P_MAX_QUERY_ID - 1] = '\0';
 }
 
+static void sleep_for_ms(unsigned timeout_ms)
+{
+    struct timespec remaining;
+
+    remaining.tv_sec = (time_t)(timeout_ms / 1000u);
+    remaining.tv_nsec = (long)(timeout_ms % 1000u) * 1000000L;
+
+    while (nanosleep(&remaining, &remaining) == -1 && errno == EINTR) {
+    }
+}
+
 int search_distributed(const char *term, uint8_t ttl, unsigned timeout_ms, search_results_t *results_out)
 {
     if (term == NULL || results_out == NULL) {
@@ -125,8 +137,8 @@ int search_distributed(const char *term, uint8_t ttl, unsigned timeout_ms, searc
         return -1;
     }
 
-    // Congelar este hilo el tiempo exacto del timeout (usleep usa microsegundos)
-    usleep(timeout_ms * 1000);
+    // Congelar este hilo el tiempo exacto del timeout.
+    sleep_for_ms(timeout_ms);
 
     // Finalizó el tiempo. Recolectamos todo lo que el hilo receptor haya depositado
     aggregator_collect(&global_aggregator, results_out);
