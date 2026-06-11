@@ -8,8 +8,8 @@ aligned.
 ## Current Project State
 
 The repository is in Phase 2 integration. Phase 1 foundations are in place, and
-Student 1 plus Student 2 work has now been merged on `dev` so Student 3 can
-build distributed search on top of a working central-server/client-transfer
+the Student 1 server work, Student 2 client/transfer work, and Student 3
+distributed-search work have been merged on `dev` into a shared integration
 base.
 
 Phase 1 foundations are mostly in place:
@@ -22,7 +22,7 @@ Phase 1 foundations are mostly in place:
 - Skeletons exist for server, client, transfer, search, and LaTeX docs.
 
 Early Phase 2 work now works end to end for centralized discovery, distributed
-`find -d`, and transfer:
+`find -d`, plain `find` fallback, and transfer:
 
 - The client scans the share folder at startup.
 - The client sends a `REGISTER` request after scanning.
@@ -34,12 +34,16 @@ Early Phase 2 work now works end to end for centralized discovery, distributed
   search.
 - The server also accepts `(S,H)` identity lookup through the existing `FIND`
   request, so clients can ask for all peers holding a specific file identity.
-- The REPL supports `request <S> <H>` using peers cached from the latest search
-  result, and the transfer layer can download and assemble the requested file.
+- Plain `find <name>` tries the server first and falls back to distributed
+  search if the server fails or returns no results.
+- The REPL supports `request <S> <H>` by refreshing peers through server
+  identity `FIND`, falling back to matching cached results if the refresh cannot
+  provide peers, and then downloading/assembling the requested file.
 - Integration tests cover central registration/search and central
   search-to-transfer download, including identity search followed by
-  `request <S> <H>`, distributed search, and distributed search followed by
-  `request <S> <H>`.
+  `request <S> <H>`, direct request identity refresh, distributed search,
+  distributed search followed by `request <S> <H>`, plain `find` fallback, and
+  hot-unplug request behavior.
 
 The most important integration boundary is still `common/protocol.h`. Do not
 change it casually. Any protocol change affects all three students.
@@ -57,7 +61,7 @@ change it casually. Any protocol change affects all three students.
 | `client/main.c` | Student 2 | Parse CLI, scan share folder, register with server, start REPL | Registration now wired |
 | `client/server_api.c/h` | Student 2 | Client-side protocol calls to central server | Implements `REGISTER` and `FIND` request paths |
 | `client/scanner.c/h` | Student 2 | Recursive folder scan and hash metadata creation | Implemented |
-| `client/repl.c/h` | Student 2 | Interactive commands | `find -s`, `find -d`, and `request <S> <H>` wired; plain `find` fallback still incomplete |
+| `client/repl.c/h` | Student 2 | Interactive commands | `find -s`, `find -d`, plain `find` fallback, and `request <S> <H>` identity refresh are wired |
 | `transfer/listener.c/h` | Student 2 | Accept incoming transfer requests on the client data port | Implemented listener thread and per-request dispatch |
 | `transfer/sender.c/h` | Student 2 | Send requested byte ranges to peers | Sends `TRANSFER_DATA` frames for validated byte ranges |
 | `transfer/receiver.c/h` | Student 2 | Request segments, collect them, assemble file | Splits ranges across peers and assembles into the share folder |
@@ -66,7 +70,7 @@ change it casually. Any protocol change affects all three students.
 | `search/aggregator.c/h` | Student 3 | Collect distributed search responses | Basic thread-safe aggregator implemented and used by distributed search |
 | `docs/` | Student 3 | LaTeX report | Skeleton exists |
 | `tests/unit/` | All | Unit and smoke tests for shared behavior | Hash, net, protocol, registry, query handler, and transfer tests exist |
-| `tests/integration/` | All | Local smoke tests for process-level behavior | Central server/client search and central search-to-transfer download tests exist |
+| `tests/integration/` | All | Local smoke tests for process-level behavior | Central search, request transfer, distributed search, plain fallback, request identity refresh, and hot-unplug smoke tests exist |
 
 ## Student 1: Server And Protocol Architect
 
@@ -149,11 +153,12 @@ Student 2 owns `client/`, `transfer/`, and `common/net.c`.
 - `client/server_api.c` sends:
   - `REGISTER` after scanning
   - central-server `FIND` for `find -s`
+  - identity `FIND` terms used by `request <S> <H>` refresh
 - `client/repl.c` supports:
   - `find -s <name>` through the central server
   - `find -d <name>` through Student 3's distributed search path
-  - `request <S> <H>` using peers cached from the latest search result
-  - TODO messages for server-first fallback
+  - `find <name>` with server-first, distributed-search fallback behavior
+  - `request <S> <H>` with server identity refresh and cached-result fallback
 - `transfer/listener.c` starts a detached listener on the client data port.
 - `transfer/sender.c` locates local files by `(hash, size)` and sends requested
   byte ranges as `P2P_MSG_TRANSFER_DATA` frames.
@@ -163,27 +168,28 @@ Student 2 owns `client/`, `transfer/`, and `common/net.c`.
 - Integration coverage now verifies that one client can register a file, another
   client can find it through the central server, distributed search can find it
   through `find -d`, and `request <S> <H>` downloads it through the transfer
-  path. Newer integration tests verify both identity-search-to-request and
-  distributed-search-to-request flows.
+  path. Newer integration tests verify identity-search-to-request,
+  request-without-prior-find identity refresh, distributed-search-to-request,
+  plain `find` fallback, and share-folder removal during a request.
 
 ### What Student 2 Should Work On Next
 
-1. Improve request peer discovery once more search modes are available.
-   - Current `request <S> <H>` uses cached results from the latest displayed
-     `find -s` or `find -d`.
-   - Student 1's server can now refresh peers by identity through
-     `server_find_files` using terms like `"<S> <H>"` or `"S=<S> H=<H>"`.
-   - Once `find -d` and plain `find` are wired, request should accept cached
-     results from whichever search mode last displayed matching peers.
+1. Validate multi-peer request splitting with two or more peers holding the same
+   `(S,H)` identity.
+   - The receiver already splits byte ranges across available peers.
+   - The next useful validation is a three-client run where two source peers
+     hold identical content and the requester downloads from both.
 
-2. Wire plain `find <name>`.
-   - Try server first.
-   - If the server search times out or returns no results, call Student 3's
-     `search_distributed`.
+2. Repeat hot-unplug checks on Linux.
+   - Local integration now removes the requester's share folder during runtime
+     and confirms the client logs a warning, keeps the REPL alive, and does not
+     crash the server.
+   - The final demo should repeat this on the Linux target environment.
 
-3. Complete hot-unplug validation.
-   - Removing or renaming the share folder while the client runs should produce
-     warnings, not crashes.
+3. Polish user-facing transfer errors.
+   - Current behavior is correct for smoke validation, but messages can be made
+     more specific for peer connection failure versus missing local share
+     folder.
 
 ### Student 2 Cautions
 
@@ -235,12 +241,7 @@ Student 3 owns `search/` and `docs/`.
    - `QUERY_RESULT` should consistently encode/decode all multi-byte
      `file_meta_t` fields in network byte order.
 
-4. Wire and test plain `find <name>` fallback with Student 2.
-   - Try the server first.
-   - Fall back to `search_distributed` if the server fails or returns no
-     results.
-
-5. Keep the LaTeX report alive.
+4. Keep the LaTeX report alive.
    - Update architecture decisions as implementation changes.
    - Document TTL reasoning and empirical behavior.
    - Record challenges and conclusions during development, not only at the end.
@@ -376,7 +377,7 @@ Final integration:
 - Share files from different folders.
 - Test `find -s`, `find -d`, and `request`.
 - Remove or rename a share folder while the client runs to verify hot-unplug
-  safety.
+  safety. A local automated smoke test exists, but repeat this on Linux.
 - Update the LaTeX report with measured behavior and design decisions.
 
 ## Current Risks
@@ -385,8 +386,10 @@ Final integration:
   needs multi-hop and LAN hardening.
 - Search flood currently uses `data_port + 100`; this avoids competing with the
   transfer listener but should be documented or revisited before final demo.
-- Request peer discovery depends on cached displayed search results.
-- Plain `find <name>` fallback is still not implemented.
+- Multi-peer request splitting is implemented but still needs a dedicated
+  three-client validation with two holders of the same file identity.
+- Hot-unplug behavior has local smoke coverage; it still needs final Linux demo
+  validation.
 - Protocol structs are frozen enough to proceed, but any future change will
   require coordinated updates across client, server, search, and tests.
 - The report exists, but content should be filled continuously to avoid a last

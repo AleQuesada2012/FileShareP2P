@@ -2,9 +2,21 @@
 
 P2P file-sharing simulator over TCP sockets for IC-6600 Principios de Sistemas Operativos, ITCR I Semestre 2026.
 
-This repository now has the Phase 1 foundations plus the main Phase 2 discovery and transfer pieces: clients can register, run centralized search, run distributed `find -d`, look up peers by file identity, and request a found file from another peer.
+This repository is now in Phase 2 integration. Phase 1 foundations are in
+place, and the main Phase 2 discovery and transfer pieces are available:
+clients can register, run centralized search, run distributed `find -d`, use
+plain `find` with server-first fallback, refresh request peers by file identity,
+and request a found file from another peer.
 
-## Phase 1 Scope
+## Current Development Phase
+
+The current development phase is **Phase 2**. The project has moved beyond the
+Phase 1 shared-contract milestone because server registration/search, client
+registration, distributed search, segmented transfer, plain `find` fallback,
+and hot-unplug smoke validation are now implemented and covered by local
+integration tests.
+
+## Phase 1 Foundation Status
 
 Phase 1 is about stable shared contracts, not a complete simulator.
 
@@ -72,14 +84,16 @@ make clean
 
 ## Running The Current Binaries
 
-The binaries compile, and central-server search, distributed `find -d`, and transfer are available for local integration testing. Plain `find <name>` fallback is still under development.
+The binaries compile, and central-server search, distributed `find -d`, plain
+`find <name>` fallback, request identity refresh, and transfer are available for
+local integration testing.
 
 ```sh
 build/server/p2p-server <listen_port>
 build/client/p2p-client <server_ip> <server_port> <data_port> <share_folder> [--ttl <n>] [--search-timeout <ms>]
 ```
 
-Current runtime limitations:
+Current runtime status:
 
 | Command or feature | Current behavior |
 |---|---|
@@ -88,12 +102,13 @@ Current runtime limitations:
 | Client startup scan | Implemented locally, then sends a `REGISTER` request to the server |
 | REPL `find -s <name>` | Sends a central-server `FIND` request and prints returned `(S, H, IP, port, name)` results |
 | REPL `find -d <name>` | Sends a distributed flood query to known neighbors and prints collected results |
-| REPL `find <name>` | Parsed, but server-first fallback remains TODO |
-| REPL `request <S> <H>` | Uses cached search results, downloads segments, and writes `download_<S>_<H>.bin` |
+| REPL `find <name>` | Tries the server first; falls back to distributed search when the server fails or returns no results |
+| REPL `request <S> <H>` | Refreshes peers with central identity `FIND`, falls back to cached matching results if needed, downloads segments, and writes `download_<S>_<H>.bin` |
 | Incoming transfer listener | Starts on the client data port and accepts `TRANSFER_REQ` messages |
 | Transfer sender | Sends requested byte ranges as `TRANSFER_DATA` frames |
 | Transfer receiver / file assembly | Splits ranges across peers and assembles a completed file |
 | Distributed search flood | Runs on `data_port + 100`, forwards query messages with TTL, deduplicates query IDs, and aggregates responses |
+| Hot-unplug handling | Missing destination share folders produce warnings and the REPL continues running; local smoke coverage exists |
 
 For `request <S> <H>`, the frozen protocol uses the existing
 `P2P_MSG_FIND_REQ` / `P2P_MSG_FIND_RESP` exchange. Send `find_req_t.term` as
@@ -119,12 +134,12 @@ Do not change `common/protocol.h` without coordinating with all owners.
 
 ## Phase 2 Starting Points
 
-Recommended next implementation work:
+Recommended next implementation and validation work:
 
 | Owner | Next task |
 |---|---|
 | Student 1 | Stress-test server registration and `FIND` with 3+ clients |
-| Student 2 | Optionally refresh `request <S> <H>` peers through identity `FIND`; finish plain `find <name>` fallback and hot-unplug validation |
+| Student 2 | Validate multi-peer request splitting with 2+ holders, repeat hot-unplug checks on Linux, and polish transfer error reporting |
 | Student 3 | Harden distributed search for multi-hop LAN runs and document TTL/window behavior |
 
 Keep commits focused by ownership area. Changes to `common/` need extra care because all modules depend on it.

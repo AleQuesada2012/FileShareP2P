@@ -40,8 +40,8 @@ Verifies that a central filename search can feed Student 2's transfer request.
 - Compares the downloaded file against client 1's source file.
 
 Expected result: the central `find -s` output is cached by the REPL, `request`
-uses that cached peer, and the transfer layer writes an identical downloaded
-file into client 2's share folder.
+refreshes peers through identity lookup, and the transfer layer writes an
+identical downloaded file into client 2's share folder.
 
 ## `test_identity_request_transfer.sh`
 
@@ -86,8 +86,54 @@ Verifies that a distributed search result can feed Student 2's transfer request.
 - Compares the downloaded file against client 1's source file.
 
 Expected result: distributed search populates the REPL result cache with the
-owning peer, and `request` downloads the file through the existing transfer
-path.
+owning peer. The request path still attempts a server identity refresh first,
+then downloads the file through the existing transfer path.
+
+## `test_request_identity_refresh.sh`
+
+Verifies that `request <S> <H>` no longer requires a previously displayed
+search result.
+
+- Starts one server.
+- Keeps client 1 alive with `identity-refresh.txt`.
+- Starts client 2 with an empty share folder.
+- Runs `request 5 11831194018420276491` without running `find` first.
+- Checks that client 2 refreshed one peer through server identity lookup.
+- Compares the downloaded file against client 1's source file.
+
+Expected result: `request` sends an identity `FIND` to the server, receives the
+owning peer, and downloads the exact file.
+
+## `test_plain_find_fallback.sh`
+
+Verifies the spec behavior for plain `find <name>`.
+
+- Starts one server.
+- Keeps client 1 alive with `fallback-p2p.txt`.
+- Starts client 2 and lets it receive client 1 as a neighbor during
+  registration.
+- Stops the server before issuing the REPL command.
+- Runs `find fallback-p2p`.
+- Checks that client 2 reports server fallback, starts distributed search, and
+  prints the peer result.
+
+Expected result: when the server is unavailable, plain `find` falls back to the
+distributed search path and displays results in the normal result format.
+
+## `test_hot_unplug_request.sh`
+
+Verifies the local hot-unplug requirement for Student 2's request path.
+
+- Starts one server.
+- Keeps client 1 alive with `hot-source.txt`.
+- Starts client 2 with an empty share folder.
+- Removes client 2's share folder while the client process is still running.
+- Runs `request 5 11831194018420276491`, then `help`, then `quit`.
+- Checks that the request refreshed a peer, the missing share folder was logged
+  as a warning, the help command still ran, and the server process stayed alive.
+
+Expected result: removing the share folder causes the request to fail cleanly
+with a warning, but neither the client REPL nor the server crashes.
 
 ## Remaining Manual Scenarios
 
@@ -97,5 +143,5 @@ the team should still run a three-client scenario on Linux or a LAN and verify:
 - multi-hop distributed forwarding,
 - TTL limiting,
 - duplicate query suppression,
-- plain `find <name>` fallback once implemented,
-- hot-unplug behavior when a share folder disappears while clients keep running.
+- multi-peer request splitting with two or more holders of the same file,
+- hot-unplug behavior on the final Linux target environment.

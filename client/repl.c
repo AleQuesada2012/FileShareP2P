@@ -16,7 +16,7 @@ static void print_help(void)
     puts("Commands:");
     puts("  find -s <name>       search through central server");
     puts("  find -d <name>       distributed neighbor search");
-    puts("  find <name>          server first, then distributed fallback (TODO)");
+    puts("  find <name>          server first, then distributed fallback");
     puts("  request <S> <H>      request file by size and hash");
     puts("  help                 show this help");
     puts("  quit                 exit client");
@@ -129,6 +129,100 @@ static size_t collect_cached_peers(const search_results_t *last_results,
     return count;
 }
 
+static void remember_results(search_results_t *last_results, const search_results_t *results)
+{
+    if (last_results != NULL && results != NULL) {
+        *last_results = *results;
+    }
+}
+
+static int run_server_find(const repl_context_t *ctx,
+                           const char *term,
+                           search_results_t *results)
+{
+    if (server_find_files(ctx->server_ip, ctx->server_port, term, results) != 0) {
+        return -1;
+    }
+
+    print_find_results(results);
+    return 0;
+}
+
+static int run_distributed_find(const repl_context_t *ctx,
+                                const char *term,
+                                search_results_t *results)
+{
+    printf("Iniciando búsqueda P2P en la red distribuida...\n");
+    if (search_distributed(term, ctx->ttl, ctx->search_timeout_ms, results) != 0) {
+        return -1;
+    }
+
+    print_find_results(results);
+    return 0;
+}
+
+static int build_identity_find_term(char *buffer,
+                                    size_t buffer_size,
+                                    uint64_t size,
+                                    uint64_t hash)
+{
+    int written;
+
+    written = snprintf(buffer,
+                       buffer_size,
+                       "%llu %llu",
+                       (unsigned long long)size,
+                       (unsigned long long)hash);
+    if (written < 0 || written >= (int)buffer_size) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+
+    return 0;
+}
+
+static size_t refresh_identity_peers(const repl_context_t *ctx,
+                                     uint64_t size,
+                                     uint64_t hash,
+                                     peer_entry_t *peers,
+                                     size_t capacity,
+                                     search_results_t *last_results)
+{
+    char identity_term[64];
+    search_results_t refreshed;
+    size_t count;
+
+    if (build_identity_find_term(identity_term, sizeof(identity_term), size, hash) != 0) {
+        return 0u;
+    }
+
+    if (server_find_files(ctx->server_ip, ctx->server_port, identity_term, &refreshed) != 0) {
+        fprintf(stderr,
+                "Warning: identity FIND refresh failed for S=%llu H=%llu: %s\n",
+                (unsigned long long)size,
+                (unsigned long long)hash,
+                strerror(errno));
+        return 0u;
+    }
+
+    count = collect_cached_peers(&refreshed, size, hash, peers, capacity);
+    printf("Refreshed %zu peer(s) through server identity lookup.\n", count);
+    if (count > 0u) {
+        remember_results(last_results, &refreshed);
+    }
+
+    return count;
+}
+
+static void warn_if_share_folder_unavailable(int saved_errno, const char *share_folder)
+{
+    if (saved_errno == ENOENT || saved_errno == ENOTDIR || saved_errno == EACCES) {
+        fprintf(stderr,
+                "Warning: share folder is unavailable (%s); continuing.\n",
+                share_folder);
+    }
+}
+
 static void handle_find_command(const repl_context_t *ctx,
                                 char *args,
                                 search_results_t *last_results)
@@ -143,14 +237,11 @@ static void handle_find_command(const repl_context_t *ctx,
             return;
         }
 
-        if (server_find_files(ctx->server_ip, ctx->server_port, term, &results) != 0) {
+        if (run_server_find(ctx, term, &results) != 0) {
             perror("server_find_files");
             return;
         }
-        print_find_results(&results);
-        if (last_results != NULL) {
-            *last_results = results;
-        }
+        remember_results(last_results, &results);
         return;
     }
 
@@ -161,16 +252,12 @@ static void handle_find_command(const repl_context_t *ctx,
             return;
         }
 
-        printf("Iniciando búsqueda P2P en la red distribuida...\n");
-        if (search_distributed(term, ctx->ttl, ctx->search_timeout_ms, &results) != 0) {
+        if (run_distributed_find(ctx, term, &results) != 0) {
             perror("search_distributed failed");
             return;
         }
 
-        print_find_results(&results);
-        if (last_results != NULL) {
-            *last_results = results;
-        }
+        remember_results(last_results, &results);
         return;
     }
 
@@ -180,12 +267,33 @@ static void handle_find_command(const repl_context_t *ctx,
         return;
     }
 
-    puts("TODO: server-first search fallback is not implemented yet. Use: find -s <name>");
+    if (server_find_files(ctx->server_ip, ctx->server_port, term, &results) == 0) {
+        if (results.count > 0u) {
+            print_find_results(&results);
+            remember_results(last_results, &results);
+            return;
+        }
+
+        fprintf(stderr,
+                "No server results for '%s'; falling back to distributed search.\n",
+                term);
+    } else {
+        fprintf(stderr,
+                "Server search unavailable for '%s'; falling back to distributed search: %s\n",
+                term,
+                strerror(errno));
+    }
+
+    if (run_distributed_find(ctx, term, &results) != 0) {
+        perror("search_distributed failed");
+        return;
+    }
+    remember_results(last_results, &results);
 }
 
 static void handle_request_command(const repl_context_t *ctx,
                                    char *args,
-                                   const search_results_t *last_results)
+                                   search_results_t *last_results)
 {
     peer_entry_t peers[P2P_MAX_RESULTS];
     uint64_t size;
@@ -200,16 +308,22 @@ static void handle_request_command(const repl_context_t *ctx,
         return;
     }
 
-    peer_count = collect_cached_peers(last_results, size, hash, peers, P2P_MAX_RESULTS);
+    peer_count = refresh_identity_peers(ctx, size, hash, peers, P2P_MAX_RESULTS, last_results);
     if (peer_count == 0u) {
-        fprintf(stderr, "No cached peers for S=%llu H=%llu. Run find -s or find -d first.\n",
+        peer_count = collect_cached_peers(last_results, size, hash, peers, P2P_MAX_RESULTS);
+    }
+    if (peer_count == 0u) {
+        fprintf(stderr, "No peers found for S=%llu H=%llu.\n",
                 (unsigned long long)size,
                 (unsigned long long)hash);
         return;
     }
 
     if (transfer_request(hash, size, peers, peer_count, ctx->share_folder) != 0) {
+        int saved_errno = errno;
+        errno = saved_errno;
         perror("transfer_request");
+        warn_if_share_folder_unavailable(saved_errno, ctx->share_folder);
         return;
     }
 }
