@@ -96,8 +96,18 @@ int main(int argc, char **argv)
 
     if (net_ignore_sigpipe() != 0) return 1;
 
+    memset(&global_flood_config, 0, sizeof(global_flood_config));
+    global_flood_config.default_ttl = ctx.ttl;
+    global_flood_config.response_window_ms = ctx.search_timeout_ms;
+    global_flood_config.listen_port = ctx.data_port;
+    global_flood_config.data_port = ctx.data_port;
+    if (net_get_local_ip(ctx.server_ip, ctx.server_port, global_flood_config.node_ip, P2P_MAX_IP_LEN) != 0) {
+        strncpy(global_flood_config.node_ip, "127.0.0.1", P2P_MAX_IP_LEN - 1);
+    }
+    strncpy(global_flood_config.share_folder, ctx.share_folder, sizeof(global_flood_config.share_folder) - 1);
+
     if (transfer_listener_start(argv[3], ctx.share_folder) != 0) {
-        fprintf(stderr, "Warning: incoming file transfers are disabled.\n");
+        fprintf(stderr, "Warning: incoming file transfers and P2P requests are disabled.\n");
     }
 
     if (scanner_scan_folder(ctx.share_folder, &scan) != 0) {
@@ -115,18 +125,6 @@ int main(int argc, char **argv)
         for (uint32_t j = 0; j < register_response.neighbor_count; j++) {
             neighbors_add(&global_neighbors, &register_response.neighbors[j]);
         }
-    }
-
-    memset(&global_flood_config, 0, sizeof(global_flood_config));
-    global_flood_config.default_ttl = ctx.ttl;
-    global_flood_config.response_window_ms = ctx.search_timeout_ms;
-    global_flood_config.listen_port = ctx.data_port + 100; // Desplazamos tu puerto +100
-    global_flood_config.data_port = ctx.data_port;
-    strncpy(global_flood_config.node_ip, "127.0.0.1", P2P_MAX_IP_LEN - 1);
-    strncpy(global_flood_config.share_folder, ctx.share_folder, sizeof(global_flood_config.share_folder) - 1);
-
-    if (flood_listener_start(&global_flood_config, &global_neighbors) != 0) {
-        fprintf(stderr, "Warning: flood listener failed to start.\n");
     }
 
     return repl_run(&ctx) == 0 ? 0 : 1;
