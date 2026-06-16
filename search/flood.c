@@ -100,133 +100,79 @@ static int send_tcp_frame(const char *ip, uint16_t port, uint16_t opcode, const 
 }
 
 
-static void* flood_worker_thread(void* arg)
+void flood_handle_message(const uint8_t *buffer, uint32_t bytes_read, const flood_config_t *config)
 {
-    // 1. Extraemos la configuración
-    const flood_config_t *config = (const flood_config_t *)arg;
-    if (config == NULL) {
-        return NULL;
-    }
+    if (bytes_read >= sizeof(p2p_msg_header_t)) {
+        p2p_msg_header_t *header = (p2p_msg_header_t *)buffer;
+        uint16_t opcode = ntohs(header->opcode);
 
-    char port_str[16];
-    snprintf(port_str, sizeof(port_str), "%u", config->listen_port);
+        // --- CASO A: ALGUIEN ESTÁ BUSCANDO UN ARCHIVO ---
+        if (opcode == P2P_MSG_QUERY_FLOOD) {
+            query_msg_t *incoming_query = (query_msg_t *)(buffer + sizeof(p2p_msg_header_t));
 
-    // 2. Iniciamos el socket TCP en modo escucha
-    int server_fd = net_listen(port_str, SOMAXCONN);
-    if (server_fd < 0) {
-        perror("flood net_listen");
-        return NULL;
-    }
+            if (check_and_register_query(incoming_query->query_id)) {
+                scan_result_t scan_res;
 
-    printf("[Flood Listener] Ready and listening on port %s\n", port_str);
+                if (scanner_scan_folder(config->share_folder, &scan_res) == 0) {
 
-    // 3. Ciclo infinito del servidor en segundo plano
-    while (1) {
-        struct sockaddr_storage peer_addr;
-        socklen_t peer_addr_len = sizeof(peer_addr);
+                    query_result_t result_msg;
+                    memset(&result_msg, 0, sizeof(result_msg));
+                    strncpy(result_msg.query_id, incoming_query->query_id, P2P_MAX_QUERY_ID);
 
-        // Aceptamos la conexión entrante
-        int client_fd = accept(server_fd, (struct sockaddr *)&peer_addr, &peer_addr_len);
-        if (client_fd < 0) continue;
+                    uint32_t match_count = 0;
 
-        // Buffer amplio para soportar arreglos de resultados (P2P_MAX_RESULTS)
-        uint8_t buffer[8192];
-        uint32_t bytes_read = 0;
+                    for (size_t i = 0; i < scan_res.count && match_count < P2P_MAX_RESULTS; i++) {
 
-        if (net_recv_msg(client_fd, buffer, sizeof(buffer), &bytes_read) == 1) {
+                        if (strstr(scan_res.files[i].name, incoming_query->term) != NULL) {
+                            file_meta_t matched_file = scan_res.files[i];
 
-            if (bytes_read >= sizeof(p2p_msg_header_t)) {
-                p2p_msg_header_t *header = (p2p_msg_header_t *)buffer;
-                uint16_t opcode = ntohs(header->opcode);
+                            strncpy(matched_file.owner_ip, config->node_ip, P2P_MAX_IP_LEN - 1);
+                            matched_file.owner_port = htons(config->data_port);
 
-                // --- CASO A: ALGUIEN ESTÁ BUSCANDO UN ARCHIVO ---
-                if (opcode == P2P_MSG_QUERY_FLOOD) {
-                    query_msg_t *incoming_query = (query_msg_t *)(buffer + sizeof(p2p_msg_header_t));
+                            matched_file.hash = host_to_net64(matched_file.hash);
+                            matched_file.size_bytes = host_to_net64(matched_file.size_bytes);
 
-                    if (check_and_register_query(incoming_query->query_id)) {
-                        scan_result_t scan_res;
-
-                        if (scanner_scan_folder(config->share_folder, &scan_res) == 0) {
-
-                            query_result_t result_msg;
-                            memset(&result_msg, 0, sizeof(result_msg));
-                            strncpy(result_msg.query_id, incoming_query->query_id, P2P_MAX_QUERY_ID);
-
-                            uint32_t match_count = 0;
-
-
-                            for (size_t i = 0; i < scan_res.count && match_count < P2P_MAX_RESULTS; i++) {
-
-                                if (strstr(scan_res.files[i].name, incoming_query->term) != NULL) {
-                                    file_meta_t matched_file = scan_res.files[i];
-
-                                    strncpy(matched_file.owner_ip, config->node_ip, P2P_MAX_IP_LEN - 1);
-                                    matched_file.owner_port = htons(config->data_port);
-
-                                    result_msg.results[match_count] = matched_file;
-                                    match_count++;
-                                }
-                            }
-
-
-                            if (match_count > 0) {
-                                result_msg.result_count = htonl(match_count);
-
-                                uint32_t payload_size = offsetof(query_result_t, results) +
-                                                        (match_count * sizeof(file_meta_t));
-
-                                printf("[P2P Local] ¡Encontré %u coincidencia(s)! Enviando resultado a %s:%u\n",
-                                       match_count, incoming_query->origin_ip, ntohs(incoming_query->origin_port));
-
-                                send_tcp_frame(incoming_query->origin_ip, ntohs(incoming_query->origin_port),
-                                               P2P_MSG_QUERY_RESULT, &result_msg, payload_size);
-                            }
+                            result_msg.results[match_count] = matched_file;
+                            match_count++;
                         }
+                    }
 
-                        peer_entry_t sender;
-                        memset(&sender, 0, sizeof(sender));
+                    if (match_count > 0) {
+                        result_msg.result_count = htonl(match_count);
 
-                        flood_forward_query(incoming_query, &sender);
+                        uint32_t payload_size = offsetof(query_result_t, results) +
+                                                (match_count * sizeof(file_meta_t));
+
+                        printf("[P2P Local] ¡Encontré %u coincidencia(s)! Enviando resultado a %s:%u\n",
+                               match_count, incoming_query->origin_ip, ntohs(incoming_query->origin_port));
+
+                        send_tcp_frame(incoming_query->origin_ip, ntohs(incoming_query->origin_port),
+                                       P2P_MSG_QUERY_RESULT, &result_msg, payload_size);
                     }
                 }
-                else if (opcode == P2P_MSG_QUERY_RESULT) {
 
-                    query_result_t *incoming_result = (query_result_t *)(buffer + sizeof(p2p_msg_header_t));
-                    uint32_t count = ntohl(incoming_result->result_count);
+                peer_entry_t sender;
+                memset(&sender, 0, sizeof(sender));
 
-                    for (uint32_t i = 0; i < count; i++) {
-                        file_meta_t received_file = incoming_result->results[i];
-                        received_file.owner_port = ntohs(received_file.owner_port);
-
-                        aggregator_add(&global_aggregator, &received_file);
-                    }
-                }
+                flood_forward_query(incoming_query, &sender);
             }
         }
-        net_close(client_fd);
+        else if (opcode == P2P_MSG_QUERY_RESULT) {
+
+            query_result_t *incoming_result = (query_result_t *)(buffer + sizeof(p2p_msg_header_t));
+            uint32_t count = ntohl(incoming_result->result_count);
+
+            for (uint32_t i = 0; i < count; i++) {
+                file_meta_t received_file = incoming_result->results[i];
+                received_file.owner_port = ntohs(received_file.owner_port);
+
+                received_file.hash = net_to_host64(received_file.hash);
+                received_file.size_bytes = net_to_host64(received_file.size_bytes);
+
+                aggregator_add(&global_aggregator, &received_file);
+            }
+        }
     }
-    return NULL;
-}
-
-
-int flood_listener_start(const flood_config_t *config, neighbor_list_t *neighbors)
-{
-    if (config == NULL || neighbors == NULL) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    pthread_t listener_tid;
-
-    if (pthread_create(&listener_tid, NULL, flood_worker_thread, (void *)config) != 0) {
-        errno = EAGAIN;
-        return -1;
-    }
-
-    // liberar recursos
-    pthread_detach(listener_tid);
-
-    return 0;
 }
 
 int flood_forward_query(const query_msg_t *query, const peer_entry_t *sender)
@@ -258,7 +204,7 @@ int flood_forward_query(const query_msg_t *query, const peer_entry_t *sender)
             active_peers[i].data_port == sender->data_port) {
             continue;
             }
-        uint16_t Dport = active_peers[i].data_port + 100;
+        uint16_t Dport = active_peers[i].data_port;
 
         send_tcp_frame(active_peers[i].ip, Dport,
                        P2P_MSG_QUERY_FLOOD, &query_to_forward, sizeof(query_msg_t));
