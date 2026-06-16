@@ -66,7 +66,7 @@ change it casually. Any protocol change affects all three students.
 | `transfer/sender.c/h` | Student 2 | Send requested byte ranges to peers | Sends `TRANSFER_DATA` frames for validated byte ranges |
 | `transfer/receiver.c/h` | Student 2 | Request segments, collect them, assemble file | Splits ranges across peers and assembles into the share folder |
 | `search/neighbors.c/h` | Student 3 | Neighbor list management and distributed-search API boundary | Neighbor list works; `search_distributed` builds query IDs, floods to neighbors, waits for responses, and returns collected results |
-| `search/flood.c/h` | Student 3 | Flood listener, query forwarding, TTL behavior | Starts a TCP listener on `data_port + 100`, handles `QUERY_FLOOD` / `QUERY_RESULT`, deduplicates query IDs, searches local files, and forwards with TTL |
+| `search/flood.c/h` | Student 3 | Flood listener, query forwarding, TTL behavior | Integrated with unified `data_port` listener; handles `QUERY_FLOOD` / `QUERY_RESULT`, deduplicates query IDs, searches local files, and forwards with TTL |
 | `search/aggregator.c/h` | Student 3 | Collect distributed search responses | Basic thread-safe aggregator implemented and used by distributed search |
 | `docs/` | Student 3 | LaTeX report | Skeleton exists |
 | `tests/unit/` | All | Unit and smoke tests for shared behavior | Hash, net, protocol, registry, query handler, and transfer tests exist |
@@ -215,7 +215,7 @@ Student 3 owns `search/` and `docs/`.
   - adding a result
   - collecting a snapshot of results
 - `search/flood.c` implements:
-  - a TCP listener on `data_port + 100`
+  - integrated flood handling on the unified `data_port` (no longer on `data_port + 100`)
   - `P2P_MSG_QUERY_FLOOD` handling
   - local share-folder scanning for matches
   - `P2P_MSG_QUERY_RESULT` response handling
@@ -230,18 +230,7 @@ Student 3 owns `search/` and `docs/`.
    - Verify TTL expiration prevents uncontrolled propagation.
    - Verify duplicate query IDs are discarded under repeated or cyclic delivery.
 
-2. Align the distributed-search port strategy with the final architecture.
-   - Current implementation listens on `data_port + 100` for flood messages
-     while transfer uses `data_port`.
-   - If the final design requires one peer listener per process, coordinate with
-     Student 2 before changing the dispatch path.
-
-3. Improve protocol serialization in distributed results if testing moves
-   beyond same-host/same-endian runs.
-   - `QUERY_RESULT` should consistently encode/decode all multi-byte
-     `file_meta_t` fields in network byte order.
-
-4. Keep the LaTeX report alive.
+2. Keep the LaTeX report alive.
    - Update architecture decisions as implementation changes.
    - Document TTL reasoning and empirical behavior.
    - Record challenges and conclusions during development, not only at the end.
@@ -384,8 +373,6 @@ Final integration:
 
 - Distributed search is implemented for local two-client smoke tests, but still
   needs multi-hop and LAN hardening.
-- Search flood currently uses `data_port + 100`; this avoids competing with the
-  transfer listener but should be documented or revisited before final demo.
 - Multi-peer request splitting is implemented but still needs a dedicated
   three-client validation with two holders of the same file identity.
 - Hot-unplug behavior has local smoke coverage; it still needs final Linux demo
