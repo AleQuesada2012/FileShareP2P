@@ -3,6 +3,9 @@
 #include "common/net.h"
 #include "common/protocol.h"
 #include "transfer/sender.h"
+#include "search/flood.h"
+
+extern flood_config_t global_flood_config;
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -42,7 +45,7 @@ static int is_little_endian(void)
     return *((const unsigned char *)&value) == 1u;
 }
 
-static uint64_t net_to_host64(uint64_t value)
+static uint64_t listener_net_to_host64(uint64_t value)
 {
     if (!is_little_endian()) {
         return value;
@@ -80,10 +83,10 @@ static int decode_header(const p2p_msg_header_t *header,
 
 static void decode_transfer_req(transfer_req_t *dst, const transfer_req_t *src)
 {
-    dst->hash = net_to_host64(src->hash);
-    dst->size = net_to_host64(src->size);
-    dst->byte_start = net_to_host64(src->byte_start);
-    dst->byte_end = net_to_host64(src->byte_end);
+    dst->hash = listener_net_to_host64(src->hash);
+    dst->size = listener_net_to_host64(src->size);
+    dst->byte_start = listener_net_to_host64(src->byte_start);
+    dst->byte_end = listener_net_to_host64(src->byte_end);
 }
 
 static int send_error(int fd, p2p_error_code_t code, const char *message)
@@ -100,23 +103,21 @@ static int send_error(int fd, p2p_error_code_t code, const char *message)
     return net_send_msg(fd, &frame, (uint32_t)sizeof(frame));
 }
 
-static int handle_transfer_request(int client_fd, const char *share_folder)
+static int handle_transfer_request(int client_fd, const char *share_folder, const void *buffer, uint32_t frame_len)
 {
     transfer_req_frame_t frame;
     transfer_req_t request;
-    uint32_t frame_len = 0u;
     uint32_t payload_len = 0u;
     uint16_t opcode = 0u;
-    int rc;
 
-    memset(&frame, 0, sizeof(frame));
-    rc = net_recv_msg(client_fd, &frame, sizeof(frame), &frame_len);
-    if (rc <= 0) {
-        errno = rc == 0 ? ECONNRESET : errno;
+    if (frame_len != (uint32_t)sizeof(frame)) {
+        (void)send_error(client_fd, P2P_ERROR_BAD_REQUEST, "invalid transfer request");
+        errno = EPROTO;
         return -1;
     }
-    if (frame_len != (uint32_t)sizeof(frame) ||
-        decode_header(&frame.header, &opcode, &payload_len) != 0 ||
+    memcpy(&frame, buffer, frame_len);
+
+    if (decode_header(&frame.header, &opcode, &payload_len) != 0 ||
         opcode != (uint16_t)P2P_MSG_TRANSFER_REQ ||
         payload_len != sizeof(frame.payload)) {
         (void)send_error(client_fd, P2P_ERROR_BAD_REQUEST, "invalid transfer request");
@@ -136,8 +137,24 @@ static int handle_transfer_request(int client_fd, const char *share_folder)
 static void *request_thread_main(void *arg)
 {
     request_context_t *ctx = (request_context_t *)arg;
+    uint8_t buffer[8192];
+    uint32_t bytes_read = 0;
 
-    (void)handle_transfer_request(ctx->client_fd, ctx->share_folder);
+    if (net_recv_msg(ctx->client_fd, buffer, sizeof(buffer), &bytes_read) == 1) {
+        if (bytes_read >= sizeof(p2p_msg_header_t)) {
+            p2p_msg_header_t *header = (p2p_msg_header_t *)buffer;
+            uint16_t opcode = ntohs(header->opcode);
+
+            if (opcode == P2P_MSG_TRANSFER_REQ) {
+                (void)handle_transfer_request(ctx->client_fd, ctx->share_folder, buffer, bytes_read);
+            } else if (opcode == P2P_MSG_QUERY_FLOOD || opcode == P2P_MSG_QUERY_RESULT) {
+                flood_handle_message(buffer, bytes_read, &global_flood_config);
+            } else {
+                (void)send_error(ctx->client_fd, P2P_ERROR_BAD_REQUEST, "unknown opcode");
+            }
+        }
+    }
+
     net_close(ctx->client_fd);
     free(ctx);
     return NULL;
