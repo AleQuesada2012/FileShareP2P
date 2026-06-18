@@ -2,6 +2,8 @@
 set -eu
 
 PORT=39203
+SERVER_IP="${TEST_SERVER_IP:-127.0.0.1}"
+LOCAL_IP=$(./build/tests/get_local_ip "${SERVER_IP}" "${PORT}")
 ROOT_DIR=$(mktemp -d)
 SERVER_PID=
 
@@ -33,21 +35,21 @@ printf 'notes bytes from peer two\n' > "${ROOT_DIR}/peer2/notes-beta.txt"
 SERVER_PID=$!
 sleep 1
 
-printf 'quit\n' | ./build/client/p2p-client 127.0.0.1 "${PORT}" 7101 "${ROOT_DIR}/peer1" \
+printf 'quit\n' | ./build/client/p2p-client ${SERVER_IP} "${PORT}" 7101 "${ROOT_DIR}/peer1" \
     > "${ROOT_DIR}/client1.log" 2>&1
 
-require_log "Registered 1 file(s) with server 127.0.0.1:${PORT}; received 0 neighbor(s)." \
+require_log "Registered 1 file(s) with server ${SERVER_IP}:${PORT}; received 0 neighbor(s)." \
     "${ROOT_DIR}/client1.log"
 
-printf 'find -s movie\nfind -s notes\nquit\n' | ./build/client/p2p-client 127.0.0.1 "${PORT}" 7102 "${ROOT_DIR}/peer2" \
+printf 'find -s movie\nfind -s notes\nquit\n' | ./build/client/p2p-client ${SERVER_IP} "${PORT}" 7102 "${ROOT_DIR}/peer2" \
     > "${ROOT_DIR}/client2.log" 2>&1
 
-require_log "Registered 1 file(s) with server 127.0.0.1:${PORT}; received 1 neighbor(s)." \
+require_log "Registered 1 file(s) with server ${SERVER_IP}:${PORT}; received 1 neighbor(s)." \
     "${ROOT_DIR}/client2.log"
 require_log "movie-alpha.txt" "${ROOT_DIR}/client2.log"
-require_log "127.0.0.1:7101" "${ROOT_DIR}/client2.log"
+require_log "${LOCAL_IP}:7101" "${ROOT_DIR}/client2.log"
 require_log "notes-beta.txt" "${ROOT_DIR}/client2.log"
-require_log "127.0.0.1:7102" "${ROOT_DIR}/client2.log"
+require_log "${LOCAL_IP}:7102" "${ROOT_DIR}/client2.log"
 
 IDENTITY=$(sed -n 's/.*S=\([0-9][0-9]*\) H=\([0-9][0-9]*\).*movie-alpha.txt.*/\1 \2/p' \
     "${ROOT_DIR}/client2.log" | head -n 1)
@@ -57,10 +59,10 @@ if [ -z "${IDENTITY}" ]; then
     exit 1
 fi
 
-printf 'find -s %s\nquit\n' "${IDENTITY}" | ./build/client/p2p-client 127.0.0.1 "${PORT}" 7102 "${ROOT_DIR}/peer2" \
+printf 'find -s %s\nquit\n' "${IDENTITY}" | ./build/client/p2p-client ${SERVER_IP} "${PORT}" 7102 "${ROOT_DIR}/peer2" \
     > "${ROOT_DIR}/identity.log" 2>&1
 
 require_log "movie-alpha.txt" "${ROOT_DIR}/identity.log"
-require_log "127.0.0.1:7101" "${ROOT_DIR}/identity.log"
+require_log "${LOCAL_IP}:7101" "${ROOT_DIR}/identity.log"
 
 echo "test_central_server_client: ok"

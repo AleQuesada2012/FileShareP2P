@@ -2,6 +2,7 @@
 set -eu
 
 PORT=39253
+SERVER_IP="${TEST_SERVER_IP:-127.0.0.1}"
 ROOT_DIR=$(mktemp -d)
 SERVER_PID=
 CLIENT1_PID=
@@ -55,15 +56,15 @@ sleep 1
 
 # Keep the source peer online so the requester can refresh peers by identity
 # and then open a transfer connection without a preceding find command.
-(sleep 8; printf 'quit\n') | ./build/client/p2p-client 127.0.0.1 "${PORT}" 7411 "${ROOT_DIR}/peer1" \
+(sleep 8; printf 'quit\n') | ./build/client/p2p-client ${SERVER_IP} "${PORT}" 7411 "${ROOT_DIR}/peer1" \
     > "${ROOT_DIR}/client1.log" 2>&1 &
 CLIENT1_PID=$!
 
-wait_for_log "Registered 1 file(s) with server 127.0.0.1:${PORT}; received 0 neighbor(s)." \
+wait_for_log "Registered 1 file(s) with server ${SERVER_IP}:${PORT}; received 0 neighbor(s)." \
     "${ROOT_DIR}/client1.log"
 
 printf 'request 5 11831194018420276491\nquit\n' | \
-    ./build/client/p2p-client 127.0.0.1 "${PORT}" 7412 "${ROOT_DIR}/peer2" \
+    ./build/client/p2p-client ${SERVER_IP} "${PORT}" 7412 "${ROOT_DIR}/peer2" \
     > "${ROOT_DIR}/client2.log" 2>&1
 
 require_log "Refreshed 1 peer(s) through server identity lookup." "${ROOT_DIR}/client2.log"

@@ -105,6 +105,10 @@ $(BUILD_DIR)/tests/unit/test_transfer_receiver: $(BUILD_DIR)/tests/unit/test_tra
 	@mkdir -p $(dir $@)
 	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
 
+$(BUILD_DIR)/tests/get_local_ip: $(BUILD_DIR)/tests/get_local_ip.o $(BUILD_DIR)/common/net.o
+	@mkdir -p $(dir $@)
+	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
+
 $(BUILD_DIR)/%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
@@ -118,7 +122,7 @@ unit-test: $(TEST_BINS)
 		$$test_bin; \
 	done
 
-integration-test: all
+integration-test: all $(BUILD_DIR)/tests/get_local_ip
 	@set -e; \
 	for test_script in $(INTEGRATION_TESTS); do \
 		echo "==> $$test_script"; \

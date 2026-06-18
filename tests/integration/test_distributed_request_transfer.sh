@@ -2,6 +2,8 @@
 set -eu
 
 PORT=39243
+SERVER_IP="${TEST_SERVER_IP:-127.0.0.1}"
+LOCAL_IP=$(./build/tests/get_local_ip "${SERVER_IP}" "${PORT}")
 ROOT_DIR=$(mktemp -d)
 SERVER_PID=
 CLIENT1_PID=
@@ -53,20 +55,20 @@ printf 'contenido secreto distribuido' > "${ROOT_DIR}/peer1/archivo-p2p.txt"
 SERVER_PID=$!
 sleep 1
 
-(sleep 8; printf 'quit\n') | ./build/client/p2p-client 127.0.0.1 "${PORT}" 7311 "${ROOT_DIR}/peer1" \
+(sleep 8; printf 'quit\n') | ./build/client/p2p-client "${SERVER_IP}" "${PORT}" 7311 "${ROOT_DIR}/peer1" \
     > "${ROOT_DIR}/client1.log" 2>&1 &
 CLIENT1_PID=$!
 
-wait_for_log "Registered 1 file(s) with server 127.0.0.1:${PORT}; received 0 neighbor(s)." \
+wait_for_log "Registered 1 file(s) with server ${SERVER_IP}:${PORT}; received 0 neighbor(s)." \
     "${ROOT_DIR}/client1.log"
 
 printf 'find -d archivo-p2p\nrequest 29 7594717707387257083\nquit\n' | \
-    ./build/client/p2p-client 127.0.0.1 "${PORT}" 7312 "${ROOT_DIR}/peer2" \
+    ./build/client/p2p-client "${SERVER_IP}" "${PORT}" 7312 "${ROOT_DIR}/peer2" \
     > "${ROOT_DIR}/client2.log" 2>&1
 
 require_log "Iniciando búsqueda P2P en la red distribuida..." "${ROOT_DIR}/client2.log"
 require_log "archivo-p2p.txt" "${ROOT_DIR}/client2.log"
-require_log "127.0.0.1:7311" "${ROOT_DIR}/client2.log"
+require_log "${LOCAL_IP}:7311" "${ROOT_DIR}/client2.log"
 require_log "Downloaded file to" "${ROOT_DIR}/client2.log"
 
 DOWNLOADED=$(find "${ROOT_DIR}/peer2" -name 'download_29_*.bin' -print | head -n 1)

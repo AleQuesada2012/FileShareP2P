@@ -2,6 +2,8 @@
 set -eu
 
 PORT=39233
+SERVER_IP="${TEST_SERVER_IP:-127.0.0.1}"
+LOCAL_IP=$(./build/tests/get_local_ip "${SERVER_IP}" "${PORT}")
 ROOT_DIR=$(mktemp -d)
 SERVER_PID=
 CLIENT1_PID=
@@ -55,21 +57,21 @@ SERVER_PID=$!
 sleep 1
 
 # Levantamos el Cliente 1 (Dueño del archivo)
-(sleep 8; printf 'quit\n') | ./build/client/p2p-client 127.0.0.1 "${PORT}" 7301 "${ROOT_DIR}/peer1" \
+(sleep 8; printf 'quit\n') | ./build/client/p2p-client "${SERVER_IP}" "${PORT}" 7301 "${ROOT_DIR}/peer1" \
     > "${ROOT_DIR}/client1.log" 2>&1 &
 CLIENT1_PID=$!
 
-wait_for_log "Registered 1 file(s) with server 127.0.0.1:${PORT}; received 0 neighbor(s)." \
+wait_for_log "Registered 1 file(s) with server ${SERVER_IP}:${PORT}; received 0 neighbor(s)." \
     "${ROOT_DIR}/client1.log"
 
 # Levantamos el Cliente 2 y lanzamos TU comando: find -d
 printf 'find -d archivo-p2p\nquit\n' | \
-    ./build/client/p2p-client 127.0.0.1 "${PORT}" 7302 "${ROOT_DIR}/peer2" \
+    ./build/client/p2p-client "${SERVER_IP}" "${PORT}" 7302 "${ROOT_DIR}/peer2" \
     > "${ROOT_DIR}/client2.log" 2>&1
 
 # Verificamos que el resultado provenga de la red y tenga el formato correcto
 require_log "Iniciando búsqueda P2P en la red distribuida..." "${ROOT_DIR}/client2.log"
 require_log "archivo-p2p.txt" "${ROOT_DIR}/client2.log"
-require_log "127.0.0.1:7301" "${ROOT_DIR}/client2.log"
+require_log "${LOCAL_IP}:7301" "${ROOT_DIR}/client2.log"
 
 echo "test_distributed_search: ok"

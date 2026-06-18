@@ -2,6 +2,8 @@
 set -eu
 
 PORT=39263
+SERVER_IP="${TEST_SERVER_IP:-127.0.0.1}"
+LOCAL_IP=$(./build/tests/get_local_ip "${SERVER_IP}" "${PORT}")
 ROOT_DIR=$(mktemp -d)
 SERVER_PID=
 CLIENT1_PID=
@@ -62,21 +64,21 @@ sleep 1
 
 # Client 1 registers the searchable file and stays online as a distributed
 # neighbor after the central server is stopped.
-(sleep 10; printf 'quit\n') | ./build/client/p2p-client 127.0.0.1 "${PORT}" 7711 "${ROOT_DIR}/peer1" \
+(sleep 10; printf 'quit\n') | ./build/client/p2p-client "${SERVER_IP}" "${PORT}" 7711 "${ROOT_DIR}/peer1" \
     > "${ROOT_DIR}/client1.log" 2>&1 &
 CLIENT1_PID=$!
 
-wait_for_log "Registered 1 file(s) with server 127.0.0.1:${PORT}; received 0 neighbor(s)." \
+wait_for_log "Registered 1 file(s) with server ${SERVER_IP}:${PORT}; received 0 neighbor(s)." \
     "${ROOT_DIR}/client1.log"
 
 CLIENT2_IN="${ROOT_DIR}/client2.in"
 mkfifo "${CLIENT2_IN}"
-./build/client/p2p-client 127.0.0.1 "${PORT}" 7712 "${ROOT_DIR}/peer2" \
+./build/client/p2p-client "${SERVER_IP}" "${PORT}" 7712 "${ROOT_DIR}/peer2" \
     < "${CLIENT2_IN}" > "${ROOT_DIR}/client2.log" 2>&1 &
 CLIENT2_PID=$!
 exec 3>"${CLIENT2_IN}"
 
-wait_for_log "Registered 0 file(s) with server 127.0.0.1:${PORT}; received 1 neighbor(s)." \
+wait_for_log "Registered 0 file(s) with server ${SERVER_IP}:${PORT}; received 1 neighbor(s)." \
     "${ROOT_DIR}/client2.log"
 
 # Force plain find to exercise the server-failure fallback path.
@@ -98,6 +100,6 @@ require_log "Server search unavailable for 'fallback-p2p'; falling back to distr
     "${ROOT_DIR}/client2.log"
 require_log "Iniciando búsqueda P2P en la red distribuida..." "${ROOT_DIR}/client2.log"
 require_log "fallback-p2p.txt" "${ROOT_DIR}/client2.log"
-require_log "127.0.0.1:7711" "${ROOT_DIR}/client2.log"
+require_log "${LOCAL_IP}:7711" "${ROOT_DIR}/client2.log"
 
 echo "test_plain_find_fallback: ok"

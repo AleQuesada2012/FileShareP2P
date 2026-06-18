@@ -2,6 +2,7 @@
 set -eu
 
 PORT=39273
+SERVER_IP="${TEST_SERVER_IP:-127.0.0.1}"
 ROOT_DIR=$(mktemp -d)
 SERVER_PID=
 CLIENT1_PID=
@@ -62,21 +63,21 @@ sleep 1
 
 # The source peer remains alive and registered while the requester's local
 # share folder is removed to emulate a hot-unplugged device.
-(sleep 10; printf 'quit\n') | ./build/client/p2p-client 127.0.0.1 "${PORT}" 7911 "${ROOT_DIR}/peer1" \
+(sleep 10; printf 'quit\n') | ./build/client/p2p-client "${SERVER_IP}" "${PORT}" 7911 "${ROOT_DIR}/peer1" \
     > "${ROOT_DIR}/client1.log" 2>&1 &
 CLIENT1_PID=$!
 
-wait_for_log "Registered 1 file(s) with server 127.0.0.1:${PORT}; received 0 neighbor(s)." \
+wait_for_log "Registered 1 file(s) with server ${SERVER_IP}:${PORT}; received 0 neighbor(s)." \
     "${ROOT_DIR}/client1.log"
 
 CLIENT2_IN="${ROOT_DIR}/client2.in"
 mkfifo "${CLIENT2_IN}"
-./build/client/p2p-client 127.0.0.1 "${PORT}" 7912 "${ROOT_DIR}/peer2" \
+./build/client/p2p-client "${SERVER_IP}" "${PORT}" 7912 "${ROOT_DIR}/peer2" \
     < "${CLIENT2_IN}" > "${ROOT_DIR}/client2.log" 2>&1 &
 CLIENT2_PID=$!
 exec 3>"${CLIENT2_IN}"
 
-wait_for_log "Registered 0 file(s) with server 127.0.0.1:${PORT}; received 1 neighbor(s)." \
+wait_for_log "Registered 0 file(s) with server ${SERVER_IP}:${PORT}; received 1 neighbor(s)." \
     "${ROOT_DIR}/client2.log"
 
 rm -rf "${ROOT_DIR}/peer2"

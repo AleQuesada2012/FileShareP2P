@@ -2,6 +2,8 @@
 set -eu
 
 PORT=39213
+SERVER_IP="${TEST_SERVER_IP:-127.0.0.1}"
+LOCAL_IP=$(./build/tests/get_local_ip "${SERVER_IP}" "${PORT}")
 ROOT_DIR=$(mktemp -d)
 SERVER_PID=
 CLIENT1_PID=
@@ -53,19 +55,19 @@ printf 'hello' > "${ROOT_DIR}/peer1/hello-source.txt"
 SERVER_PID=$!
 sleep 1
 
-(sleep 8; printf 'quit\n') | ./build/client/p2p-client 127.0.0.1 "${PORT}" 7201 "${ROOT_DIR}/peer1" \
+(sleep 8; printf 'quit\n') | ./build/client/p2p-client ${SERVER_IP} "${PORT}" 7201 "${ROOT_DIR}/peer1" \
     > "${ROOT_DIR}/client1.log" 2>&1 &
 CLIENT1_PID=$!
 
-wait_for_log "Registered 1 file(s) with server 127.0.0.1:${PORT}; received 0 neighbor(s)." \
+wait_for_log "Registered 1 file(s) with server ${SERVER_IP}:${PORT}; received 0 neighbor(s)." \
     "${ROOT_DIR}/client1.log"
 
 printf 'find -s hello\nrequest 5 0xa430d84680aabd0b\nquit\n' | \
-    ./build/client/p2p-client 127.0.0.1 "${PORT}" 7202 "${ROOT_DIR}/peer2" \
+    ./build/client/p2p-client ${SERVER_IP} "${PORT}" 7202 "${ROOT_DIR}/peer2" \
     > "${ROOT_DIR}/client2.log" 2>&1
 
 require_log "hello-source.txt" "${ROOT_DIR}/client2.log"
-require_log "127.0.0.1:7201" "${ROOT_DIR}/client2.log"
+require_log "${LOCAL_IP}:7201" "${ROOT_DIR}/client2.log"
 require_log "Downloaded file to" "${ROOT_DIR}/client2.log"
 
 DOWNLOADED=$(find "${ROOT_DIR}/peer2" -name 'download_5_*.bin' -print | head -n 1)
