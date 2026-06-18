@@ -19,21 +19,7 @@ typedef struct {
     unsigned char data[4];
 } transfer_data_frame_t;
 
-static int is_little_endian(void)
-{
-    const uint16_t value = 1u;
-    return *((const unsigned char *)&value) == 1u;
-}
 
-static uint64_t host_to_net64(uint64_t value)
-{
-    if (!is_little_endian()) {
-        return value;
-    }
-
-    return ((uint64_t)htonl((uint32_t)(value & UINT64_C(0xffffffff))) << 32) |
-           (uint64_t)htonl((uint32_t)(value >> 32));
-}
 
 static void encode_header(p2p_msg_header_t *header, p2p_opcode_t opcode, uint32_t payload_len)
 {

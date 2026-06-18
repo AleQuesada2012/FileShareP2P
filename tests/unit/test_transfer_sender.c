@@ -18,21 +18,7 @@ typedef struct {
     unsigned char data[32];
 } transfer_data_frame_t;
 
-static int is_little_endian(void)
-{
-    const uint16_t value = 1u;
-    return *((const unsigned char *)&value) == 1u;
-}
 
-static uint64_t net_to_host64(uint64_t value)
-{
-    if (!is_little_endian()) {
-        return value;
-    }
-
-    return ((uint64_t)ntohl((uint32_t)(value & UINT64_C(0xffffffff))) << 32) |
-           (uint64_t)ntohl((uint32_t)(value >> 32));
-}
 
 static void write_all_or_die(int fd, const void *data, size_t len)
 {

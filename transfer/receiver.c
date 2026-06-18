@@ -45,26 +45,7 @@ typedef struct {
     assembly_state_t *assembly;
 } segment_request_t;
 
-static int is_little_endian(void)
-{
-    const uint16_t value = 1u;
-    return *((const unsigned char *)&value) == 1u;
-}
 
-static uint64_t host_to_net64(uint64_t value)
-{
-    if (!is_little_endian()) {
-        return value;
-    }
-
-    return ((uint64_t)htonl((uint32_t)(value & UINT64_C(0xffffffff))) << 32) |
-           (uint64_t)htonl((uint32_t)(value >> 32));
-}
-
-static uint64_t net_to_host64(uint64_t value)
-{
-    return host_to_net64(value);
-}
 
 static void encode_header(p2p_msg_header_t *header, p2p_opcode_t opcode, uint32_t payload_len)
 {
