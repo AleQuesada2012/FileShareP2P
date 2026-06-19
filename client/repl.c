@@ -1,5 +1,6 @@
 #include "client/repl.h"
 
+#include "client/scanner.h"
 #include "client/server_api.h"
 #include "transfer/receiver.h"
 
@@ -10,6 +11,8 @@
 #include <stdlib.h>
 #include "search/neighbors.h"
 #include <string.h>
+
+extern neighbor_list_t global_neighbors;
 
 static void print_help(void)
 {
@@ -148,10 +151,39 @@ static int run_server_find(const repl_context_t *ctx,
     return 0;
 }
 
+static void refresh_neighbors_from_server(const repl_context_t *ctx)
+{
+    scan_result_t scan;
+    register_resp_t resp;
+    uint32_t i;
+
+    if (scanner_scan_folder(ctx->share_folder, &scan) != 0) {
+        memset(&scan, 0, sizeof(scan));
+    }
+
+    if (server_register_files(ctx->server_ip, ctx->server_port,
+                              ctx->data_port, &scan, &resp) != 0) {
+        fprintf(stderr, "Warning: could not refresh neighbors from server: %s\n",
+                strerror(errno));
+        return;
+    }
+
+    for (i = 0u; i < resp.neighbor_count; ++i) {
+        neighbors_add(&global_neighbors, &resp.neighbors[i]);
+    }
+
+    if (resp.neighbor_count > 0u) {
+        printf("Refreshed %u neighbor(s) from server.\n", (unsigned)resp.neighbor_count);
+    }
+}
+
 static int run_distributed_find(const repl_context_t *ctx,
                                 const char *term,
                                 search_results_t *results)
 {
+
+    refresh_neighbors_from_server(ctx);
+
     printf("Iniciando búsqueda P2P en la red distribuida...\n");
     if (search_distributed(term, ctx->ttl, ctx->search_timeout_ms, results) != 0) {
         return -1;
