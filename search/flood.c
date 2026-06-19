@@ -111,6 +111,15 @@ void flood_handle_message(const uint8_t *buffer, uint32_t bytes_read, const floo
             query_msg_t *incoming_query = (query_msg_t *)(buffer + sizeof(p2p_msg_header_t));
 
             if (check_and_register_query(incoming_query->query_id)) {
+                {
+                    peer_entry_t origin_peer;
+                    memset(&origin_peer, 0, sizeof(origin_peer));
+                    strncpy(origin_peer.ip, incoming_query->origin_ip, P2P_MAX_IP_LEN - 1);
+                    origin_peer.data_port = ntohs(incoming_query->origin_port);
+                    if (origin_peer.ip[0] != '\0' && origin_peer.data_port != 0) {
+                        neighbors_add(&global_neighbors, &origin_peer);
+                    }
+                }
                 scan_result_t scan_res;
 
                 if (scanner_scan_folder(config->share_folder, &scan_res) == 0) {
