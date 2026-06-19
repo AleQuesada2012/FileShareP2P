@@ -123,25 +123,37 @@ int search_distributed(const char *term, uint8_t ttl, unsigned timeout_ms, searc
     generate_query_id(query.query_id);
     strncpy(query.term, term, P2P_MAX_TERM - 1);
 
-    // (Opcional) Si en el futuro sacas la IP y puerto del context, reemplazas esto:
     strncpy(query.origin_ip, global_flood_config.node_ip, P2P_MAX_IP_LEN - 1);
     query.origin_port = htons(global_flood_config.listen_port);
     query.ttl = ttl;
+
+    flood_register_query_id(query.query_id);
 
     // Crear sender vacío para la propagación
     peer_entry_t dummy_sender;
     memset(&dummy_sender, 0, sizeof(dummy_sender));
 
-    // Propagar a la red a través de tu módulo flood
     if (flood_forward_query(&query, &dummy_sender) != 0) {
         return -1;
     }
 
-    // Congelar este hilo el tiempo exacto del timeout.
     sleep_for_ms(timeout_ms);
 
-    // Finalizó el tiempo. Recolectamos todo lo que el hilo receptor haya depositado
     aggregator_collect(&global_aggregator, results_out);
+
+
+    size_t write_idx = 0u;
+    for (size_t i = 0u; i < results_out->count; ++i) {
+        if (strcmp(results_out->items[i].owner_ip, global_flood_config.node_ip) == 0 &&
+            results_out->items[i].owner_port == global_flood_config.data_port) {
+            continue; // Saltar archivos propios
+        }
+        if (write_idx != i) {
+            results_out->items[write_idx] = results_out->items[i];
+        }
+        write_idx++;
+    }
+    results_out->count = write_idx;
 
     return 0;
 }

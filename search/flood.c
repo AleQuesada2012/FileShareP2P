@@ -71,6 +71,11 @@ static bool check_and_register_query(const char *query_id)
     return is_new;
 }
 
+void flood_register_query_id(const char *query_id)
+{
+    (void)check_and_register_query(query_id);
+}
+
 static int send_tcp_frame(const char *ip, uint16_t port, uint16_t opcode, const void *payload, uint32_t payload_size)
 {
     char port_str[16];

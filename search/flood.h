@@ -17,5 +17,6 @@ typedef struct {
 
 void flood_handle_message(const uint8_t *buffer, uint32_t bytes_read, const flood_config_t *config);
 int flood_forward_query(const query_msg_t *query, const peer_entry_t *sender);
+void flood_register_query_id(const char *query_id);
 
 #endif
