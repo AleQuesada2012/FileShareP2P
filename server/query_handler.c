@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <netdb.h>
 #include <pthread.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -48,6 +49,17 @@ typedef struct {
     registry_t *registry;
 } client_ctx_t;
 
+static void server_log(const char *fmt, ...)
+{
+    va_list args;
+
+    printf("[server] ");
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+    putchar('\n');
+    fflush(stdout);
+}
 
 static void copy_cstr(char *dst, size_t dst_size, const char *src)
 {
@@ -246,7 +258,16 @@ static int handle_register(int fd,
     uint16_t data_port;
 
     file_count = ntohl(payload->file_count);
+    data_port = ntohs(payload->data_port);
+    server_log("REGISTER request from %s:%u with %u file(s)",
+               peer_ip,
+               (unsigned)data_port,
+               (unsigned)file_count);
     if (file_count > P2P_MAX_FILES_PER_PEER) {
+        server_log("REGISTER rejected from %s:%u: too many files (%u)",
+                   peer_ip,
+                   (unsigned)data_port,
+                   (unsigned)file_count);
         return send_error(fd, P2P_ERROR_BAD_REQUEST, "too many files in register request");
     }
 
@@ -255,15 +276,25 @@ static int handle_register(int fd,
         decode_file_meta(&files[i], &payload->files[i]);
     }
 
-    data_port = ntohs(payload->data_port);
     if (registry_register_peer(registry, peer_ip, data_port, files, file_count) != 0) {
         if (errno == ENOSPC) {
+            server_log("REGISTER failed for %s:%u: registry full",
+                       peer_ip,
+                       (unsigned)data_port);
             return send_error(fd, P2P_ERROR_REGISTRY_FULL, "server registry is full");
         }
+        server_log("REGISTER failed for %s:%u: internal registry update error",
+                   peer_ip,
+                   (unsigned)data_port);
         return send_error(fd, P2P_ERROR_INTERNAL, "could not update registry");
     }
 
     recent_count = registry_recent_peers_except(registry, peer_ip, data_port, recent, P2P_MAX_NEIGHBORS);
+    server_log("REGISTER ok for %s:%u: stored %u file(s), returned %zu neighbor(s)",
+               peer_ip,
+               (unsigned)data_port,
+               (unsigned)file_count,
+               recent_count);
 
     memset(&response, 0, sizeof(response));
     encode_header(&response.header, P2P_MSG_REGISTER_RESP, (uint32_t)sizeof(response.payload));
@@ -296,8 +327,15 @@ static int handle_find(int fd, registry_t *registry, const find_req_t *payload)
                                                  identity_size,
                                                  results,
                                                  P2P_MAX_RESULTS);
+        server_log("FIND identity request S=%llu H=%llu -> %zu result(s)",
+                   (unsigned long long)identity_size,
+                   (unsigned long long)identity_hash,
+                   result_count);
     } else {
         result_count = registry_find_by_name(registry, term, results, P2P_MAX_RESULTS);
+        server_log("FIND name request term=\"%s\" -> %zu result(s)",
+                   term,
+                   result_count);
     }
 
     memset(&response, 0, sizeof(response));
@@ -323,19 +361,33 @@ static void *client_thread_main(void *arg)
     memset(&request, 0, sizeof(request));
     rc = net_recv_msg(ctx->fd, &request, sizeof(request), &frame_len);
     if (rc <= 0) {
+        if (rc == 0) {
+            server_log("connection from %s closed before a request was received", ctx->peer_ip);
+        } else {
+            server_log("failed to receive request from %s: %s", ctx->peer_ip, strerror(errno));
+        }
         goto done;
     }
 
     if (frame_len < sizeof(p2p_msg_header_t) ||
         decode_header(&request.header, &opcode, &payload_len, &header_error) != 0 ||
         payload_len != frame_len - (uint32_t)sizeof(p2p_msg_header_t)) {
+        server_log("invalid request header from %s: frame_len=%u payload_len=%u",
+                   ctx->peer_ip,
+                   frame_len,
+                   payload_len);
         (void)send_error(ctx->fd, header_error, "invalid message header");
         goto done;
     }
 
+    server_log("processing opcode %u from %s", (unsigned)opcode, ctx->peer_ip);
+
     switch ((p2p_opcode_t)opcode) {
     case P2P_MSG_REGISTER_REQ:
         if (payload_len != sizeof(register_req_t)) {
+            server_log("REGISTER rejected from %s: invalid payload length %u",
+                       ctx->peer_ip,
+                       payload_len);
             (void)send_error(ctx->fd, P2P_ERROR_BAD_REQUEST, "invalid register payload length");
             break;
         }
@@ -343,12 +395,16 @@ static void *client_thread_main(void *arg)
         break;
     case P2P_MSG_FIND_REQ:
         if (payload_len != sizeof(find_req_t)) {
+            server_log("FIND rejected from %s: invalid payload length %u",
+                       ctx->peer_ip,
+                       payload_len);
             (void)send_error(ctx->fd, P2P_ERROR_BAD_REQUEST, "invalid find payload length");
             break;
         }
         (void)handle_find(ctx->fd, ctx->registry, &request.find_req.payload);
         break;
     default:
+        server_log("unsupported opcode %u from %s", (unsigned)opcode, ctx->peer_ip);
         (void)send_error(ctx->fd, P2P_ERROR_UNKNOWN_OPCODE, "unsupported server opcode");
         break;
     }
@@ -385,7 +441,7 @@ int query_server_run(const char *port, registry_t *registry)
         return -1;
     }
 
-    printf("p2p-server listening on port %s\n", port);
+    server_log("p2p-server listening on port %s", port);
 
     for (;;) {
         struct sockaddr_storage addr;
@@ -414,6 +470,7 @@ int query_server_run(const char *port, registry_t *registry)
         ctx->fd = client_fd;
         ctx->registry = registry;
         socket_ip_string((const struct sockaddr *)&addr, addr_len, ctx->peer_ip, sizeof(ctx->peer_ip));
+        server_log("accepted connection from %s", ctx->peer_ip);
 
         if (pthread_create(&thread, NULL, client_thread_main, ctx) != 0) {
             perror("pthread_create");
