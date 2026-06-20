@@ -12,6 +12,13 @@ and then executes every script listed in `INTEGRATION_TESTS` in the root
 on a fixed local port, launches clients through piped REPL commands, checks log
 output, and removes temporary data on exit.
 
+The large `.mkv` multi-peer test is listed in the Makefile but skipped by
+default. Enable it explicitly when the local `./share/` video is available:
+
+```sh
+RUN_LARGE_INTEGRATION=1 sh tests/integration/test_large_multi_peer_transfer.sh
+```
+
 ## `test_central_server_client.sh`
 
 Verifies Student 1 and Student 2 central registration/search integration.
@@ -41,7 +48,7 @@ Verifies that a central filename search can feed Student 2's transfer request.
 
 Expected result: the central `find -s` output is cached by the REPL, `request`
 refreshes peers through identity lookup, and the transfer layer writes an
-identical downloaded file into client 2's share folder.
+identical downloaded `.txt` file into client 2's share folder.
 
 ## `test_identity_request_transfer.sh`
 
@@ -58,6 +65,7 @@ transfer request.
 
 Expected result: `FIND` by `(S,H)` returns the owning peer, and the subsequent
 request downloads the exact file.
+The downloaded name keeps the original `.txt` extension.
 
 ## `test_distributed_search.sh`
 
@@ -88,6 +96,7 @@ Verifies that a distributed search result can feed Student 2's transfer request.
 Expected result: distributed search populates the REPL result cache with the
 owning peer. The request path still attempts a server identity refresh first,
 then downloads the file through the existing transfer path.
+The downloaded name keeps the original `.txt` extension.
 
 ## `test_request_identity_refresh.sh`
 
@@ -103,6 +112,7 @@ search result.
 
 Expected result: `request` sends an identity `FIND` to the server, receives the
 owning peer, and downloads the exact file.
+The downloaded name keeps the original `.txt` extension.
 
 ## `test_plain_find_fallback.sh`
 
@@ -135,6 +145,25 @@ Verifies the local hot-unplug requirement for Student 2's request path.
 Expected result: removing the share folder causes the request to fail cleanly
 with a warning, but neither the client REPL nor the server crashes.
 
+## `test_large_multi_peer_transfer.sh`
+
+Verifies the 3-client large-file split-transfer path with a real video file.
+
+- Requires `RUN_LARGE_INTEGRATION=1`.
+- Uses the first `.mkv` under `./share/`, or `LARGE_TEST_FILE` if provided.
+- Requires the source file to be at least 500 MiB.
+- Hard-links the same `.mkv` into two source peer folders so both peers share
+  the same `(S,H)` identity without duplicating the source file.
+- Starts one server, two source clients, and one requesting client.
+- Runs `find -s <video-name>` and `request <S> <H>` from the requester.
+- Checks that request identity refresh returns two peers.
+- Checks that the receiver splits the download into two segments.
+- Compares the downloaded `.mkv` against the original video.
+
+Expected result: the requester rebuilds the large video from two peer ranges,
+keeps the `.mkv` extension in the downloaded filename, and the final bytes match
+the source exactly.
+
 ## Remaining Manual Scenarios
 
 The automated scripts are local two-client smoke tests. Before final delivery,
@@ -143,5 +172,4 @@ the team should still run a three-client scenario on Linux or a LAN and verify:
 - multi-hop distributed forwarding,
 - TTL limiting,
 - duplicate query suppression,
-- multi-peer request splitting with two or more holders of the same file,
 - hot-unplug behavior on the final Linux target environment.

@@ -6,15 +6,15 @@ This repository is now in Phase 2 integration. Phase 1 foundations are in
 place, and the main Phase 2 discovery and transfer pieces are available:
 clients can register, run centralized search, run distributed `find -d`, use
 plain `find` with server-first fallback, refresh request peers by file identity,
-and request a found file from another peer.
+and request a found file from one or more peers.
 
 ## Current Development Phase
 
 The current development phase is **Phase 2**. The project has moved beyond the
 Phase 1 shared-contract milestone because server registration/search, client
 registration, distributed search, segmented transfer, plain `find` fallback,
-and hot-unplug smoke validation are now implemented and covered by local
-integration tests.
+hot-unplug smoke validation, and a gated large-file multi-peer transfer test
+are now implemented.
 
 ## Phase 1 Foundation Status
 
@@ -63,6 +63,14 @@ make
 make test
 ```
 
+The default integration suite includes a large-file smoke script that is skipped
+unless explicitly enabled. To run the 3-client `.mkv` split-transfer scenario
+against the local `./share/` video:
+
+```sh
+RUN_LARGE_INTEGRATION=1 sh tests/integration/test_large_multi_peer_transfer.sh
+```
+
 Build outputs:
 
 ```text
@@ -103,17 +111,25 @@ Current runtime status:
 | REPL `find -s <name>` | Sends a central-server `FIND` request and prints returned `(S, H, IP, port, name)` results |
 | REPL `find -d <name>` | Sends a distributed flood query to known neighbors and prints collected results |
 | REPL `find <name>` | Tries the server first; falls back to distributed search when the server fails or returns no results |
-| REPL `request <S> <H>` | Refreshes peers with central identity `FIND`, falls back to cached matching results if needed, downloads segments, and writes `download_<S>_<H>.bin` |
+| REPL `request <S> <H>` | Refreshes peers with central identity `FIND`, falls back to cached matching results if needed, downloads equal byte ranges from available peers, and writes `download_<S>_<H><original-extension>` |
 | Incoming transfer listener | Starts on the client data port and accepts `TRANSFER_REQ` messages |
 | Transfer sender | Sends requested byte ranges as `TRANSFER_DATA` frames |
 | Transfer receiver / file assembly | Splits ranges across peers and assembles a completed file |
-| Distributed search flood | Runs on `data_port + 100`, forwards query messages with TTL, deduplicates query IDs, and aggregates responses |
-| Hot-unplug handling | Missing destination share folders produce warnings and the REPL continues running; local smoke coverage exists |
+| Distributed search flood | Runs on the unified client data port, forwards query messages with TTL, deduplicates query IDs, and aggregates responses |
+| Hot-unplug handling | Missing source or destination share folders produce warnings and the REPL/server continue running; local smoke coverage exists |
+| Runtime logging | The server logs accepted connections, `REGISTER`, `FIND`, malformed requests, and unsupported opcodes; transfer paths log range requests and safety fallbacks |
 
 For `request <S> <H>`, the frozen protocol uses the existing
 `P2P_MSG_FIND_REQ` / `P2P_MSG_FIND_RESP` exchange. Send `find_req_t.term` as
 `"<S> <H>"`, `"S=<S> H=<H>"`, or `"<S>:<H>"`; the server returns all peers
 whose file identity matches `size_bytes == S` and `hash == H`.
+
+Distributed `find -d` uses the client's startup scan metadata when answering
+flood queries. Earlier video searches could miss the default 2-second response
+window because the receiver re-scanned and re-hashed large files during each
+query; the file size was slowing local metadata generation, not exceeding a wire
+protocol size limit. The flood path now reuses the already computed metadata
+and uses dynamically sized query-result buffers.
 
 ## Protocol Contract
 
@@ -139,7 +155,7 @@ Recommended next implementation and validation work:
 | Owner | Next task |
 |---|---|
 | Student 1 | Stress-test server registration and `FIND` with 3+ clients |
-| Student 2 | Validate multi-peer request splitting with 2+ holders, repeat hot-unplug checks on Linux, and polish transfer error reporting |
+| Student 2 | Repeat large-file and hot-unplug checks on Linux, then capture measurements for the report |
 | Student 3 | Harden distributed search for multi-hop LAN runs and document TTL/window behavior |
 
 Keep commits focused by ownership area. Changes to `common/` need extra care because all modules depend on it.
