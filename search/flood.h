@@ -4,6 +4,7 @@
 #include "common/protocol.h"
 #include "search/neighbors.h"
 
+#include <stddef.h>
 #include <stdint.h>
 
 typedef struct {
@@ -13,6 +14,8 @@ typedef struct {
     uint16_t data_port;
     char node_ip[46];
     char share_folder[4096];
+    size_t shared_file_count;
+    file_meta_t shared_files[P2P_MAX_FILES_PER_PEER];
 } flood_config_t;
 
 void flood_handle_message(const uint8_t *buffer, uint32_t bytes_read, const flood_config_t *config);

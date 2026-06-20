@@ -5,6 +5,7 @@
 #include <time.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include "common/net.h"
 #include "common/protocol.h"
@@ -92,14 +93,22 @@ static int send_tcp_frame(const char *ip, uint16_t port, uint16_t opcode, const 
 
 
     uint32_t total_size = sizeof(p2p_msg_header_t) + payload_size;
-    uint8_t buffer[2048];
+    uint8_t *buffer = (uint8_t *)malloc(total_size);
+    int rc;
+
+    if (buffer == NULL) {
+        net_close(fd);
+        errno = ENOMEM;
+        return -1;
+    }
 
     memcpy(buffer, &header, sizeof(p2p_msg_header_t));
     if (payload_size > 0 && payload != NULL) {
         memcpy(buffer + sizeof(p2p_msg_header_t), payload, payload_size);
     }
 
-    int rc = net_send_msg(fd, buffer, total_size);
+    rc = net_send_msg(fd, buffer, total_size);
+    free(buffer);
     net_close(fd);
     return rc;
 }
@@ -125,20 +134,17 @@ void flood_handle_message(const uint8_t *buffer, uint32_t bytes_read, const floo
                         neighbors_add(&global_neighbors, &origin_peer);
                     }
                 }
-                scan_result_t scan_res;
-
-                if (scanner_scan_folder(config->share_folder, &scan_res) == 0) {
-
+                if (access(config->share_folder, R_OK) == 0) {
                     query_result_t result_msg;
                     memset(&result_msg, 0, sizeof(result_msg));
                     strncpy(result_msg.query_id, incoming_query->query_id, P2P_MAX_QUERY_ID);
 
                     uint32_t match_count = 0;
 
-                    for (size_t i = 0; i < scan_res.count && match_count < P2P_MAX_RESULTS; i++) {
+                    for (size_t i = 0; i < config->shared_file_count && match_count < P2P_MAX_RESULTS; i++) {
 
-                        if (strstr(scan_res.files[i].name, incoming_query->term) != NULL) {
-                            file_meta_t matched_file = scan_res.files[i];
+                        if (strstr(config->shared_files[i].name, incoming_query->term) != NULL) {
+                            file_meta_t matched_file = config->shared_files[i];
 
                             strncpy(matched_file.owner_ip, config->node_ip, P2P_MAX_IP_LEN - 1);
                             matched_file.owner_port = htons(config->data_port);
@@ -163,6 +169,10 @@ void flood_handle_message(const uint8_t *buffer, uint32_t bytes_read, const floo
                         send_tcp_frame(incoming_query->origin_ip, ntohs(incoming_query->origin_port),
                                        P2P_MSG_QUERY_RESULT, &result_msg, payload_size);
                     }
+                } else {
+                    fprintf(stderr,
+                            "distributed search: share folder unavailable (%s); continuing without local results\n",
+                            config->share_folder);
                 }
 
                 peer_entry_t sender;

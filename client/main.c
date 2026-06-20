@@ -113,6 +113,8 @@ int main(int argc, char **argv)
     if (scanner_scan_folder(ctx.share_folder, &scan) != 0) {
         memset(&scan, 0, sizeof(scan));
     }
+    global_flood_config.shared_file_count = scan.count;
+    memcpy(global_flood_config.shared_files, scan.files, scan.count * sizeof(scan.files[0]));
     scanner_print_result(&scan);
 
     if (server_register_files(ctx.server_ip, ctx.server_port, ctx.data_port, &scan, &register_response) != 0) {
