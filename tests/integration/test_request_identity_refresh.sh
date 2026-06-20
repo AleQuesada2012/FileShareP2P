@@ -70,7 +70,7 @@ printf 'request 5 11831194018420276491\nquit\n' | \
 require_log "Refreshed 1 peer(s) through server identity lookup." "${ROOT_DIR}/client2.log"
 require_log "Downloaded file to" "${ROOT_DIR}/client2.log"
 
-DOWNLOADED=$(find "${ROOT_DIR}/peer2" -name 'download_5_*.bin' -print | head -n 1)
+DOWNLOADED=$(find "${ROOT_DIR}/peer2" -name 'download_5_*.txt' -print | head -n 1)
 if [ -z "${DOWNLOADED}" ]; then
     echo "Downloaded file was not created" >&2
     cat "${ROOT_DIR}/client2.log" >&2

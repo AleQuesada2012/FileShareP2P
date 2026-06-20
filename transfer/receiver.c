@@ -185,12 +185,26 @@ static void *segment_thread_main(void *arg)
     (void)snprintf(port, sizeof(port), "%u", (unsigned)segment->peer.data_port);
     fd = net_connect(segment->peer.ip, port);
     if (fd < 0) {
+        fprintf(stderr,
+                "transfer: could not connect to peer %s:%u for bytes %llu-%llu: %s\n",
+                segment->peer.ip,
+                (unsigned)segment->peer.data_port,
+                (unsigned long long)segment->byte_start,
+                (unsigned long long)segment->byte_end,
+                strerror(errno));
         mark_failed(segment->assembly);
         return NULL;
     }
 
     if (send_transfer_request(fd, segment) != 0 ||
         receive_segment_frames(fd, segment) != 0) {
+        fprintf(stderr,
+                "transfer: segment %llu-%llu from %s:%u failed: %s\n",
+                (unsigned long long)segment->byte_start,
+                (unsigned long long)segment->byte_end,
+                segment->peer.ip,
+                (unsigned)segment->peer.data_port,
+                strerror(errno));
         mark_failed(segment->assembly);
     }
 
@@ -225,23 +239,45 @@ int transfer_receive_segment(int peer_fd,
     return receive_segment_frames(peer_fd, &segment);
 }
 
+static const char *extension_from_name(const char *source_name)
+{
+    const char *name;
+    const char *dot;
+
+    if (source_name == NULL || source_name[0] == '\0') {
+        return "";
+    }
+
+    name = strrchr(source_name, '/');
+    name = name == NULL ? source_name : name + 1;
+    dot = strrchr(name, '.');
+    if (dot == NULL || dot == name || dot[1] == '\0') {
+        return "";
+    }
+
+    return dot;
+}
+
 static int build_download_paths(char *final_path,
                                 size_t final_path_size,
                                 char *partial_path,
                                 size_t partial_path_size,
                                 const char *destination_folder,
+                                const char *source_name,
                                 uint64_t hash,
                                 uint64_t size)
 {
     int final_len;
     int partial_len;
+    const char *extension = extension_from_name(source_name);
 
     final_len = snprintf(final_path,
                          final_path_size,
-                         "%s/download_%llu_%llu.bin",
+                         "%s/download_%llu_%llu%s",
                          destination_folder,
                          (unsigned long long)size,
-                         (unsigned long long)hash);
+                         (unsigned long long)hash,
+                         extension);
     if (final_len < 0 || final_len >= (int)final_path_size) {
         errno = ENAMETOOLONG;
         return -1;
@@ -260,6 +296,7 @@ int transfer_request(uint64_t hash,
                      uint64_t size,
                      const peer_entry_t *peers,
                      size_t peer_count,
+                     const char *source_name,
                      const char *destination_folder)
 {
     assembly_state_t assembly;
@@ -278,6 +315,10 @@ int transfer_request(uint64_t hash,
         return -1;
     }
     if (access(destination_folder, W_OK) != 0) {
+        fprintf(stderr,
+                "transfer: destination folder unavailable (%s): %s\n",
+                destination_folder,
+                strerror(errno));
         return -1;
     }
     if (build_download_paths(final_path,
@@ -285,6 +326,7 @@ int transfer_request(uint64_t hash,
                              partial_path,
                              sizeof(partial_path),
                              destination_folder,
+                             source_name,
                              hash,
                              size) != 0) {
         return -1;
@@ -295,6 +337,11 @@ int transfer_request(uint64_t hash,
         active_count = (size_t)size;
     }
     base_len = size / (uint64_t)active_count;
+    printf("Requesting S=%llu H=%llu from %zu peer(s) as %zu segment(s).\n",
+           (unsigned long long)size,
+           (unsigned long long)hash,
+           peer_count,
+           active_count);
 
     segments = (segment_request_t *)calloc(active_count, sizeof(*segments));
     threads = (pthread_t *)calloc(active_count, sizeof(*threads));
@@ -332,8 +379,18 @@ int transfer_request(uint64_t hash,
         segments[i].byte_end = end;
         segments[i].peer = peers[i];
         segments[i].assembly = &assembly;
+        printf("  segment %zu: bytes %llu-%llu from %s:%u\n",
+               i + 1u,
+               (unsigned long long)start,
+               (unsigned long long)end,
+               peers[i].ip,
+               (unsigned)peers[i].data_port);
 
         if (pthread_create(&threads[i], NULL, segment_thread_main, &segments[i]) != 0) {
+            fprintf(stderr,
+                    "transfer: could not start segment thread %zu: %s\n",
+                    i + 1u,
+                    strerror(errno));
             mark_failed(&assembly);
             break;
         }

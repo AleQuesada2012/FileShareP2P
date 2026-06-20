@@ -54,7 +54,8 @@ INTEGRATION_TESTS := \
 	tests/integration/test_distributed_request_transfer.sh \
 	tests/integration/test_request_identity_refresh.sh \
 	tests/integration/test_plain_find_fallback.sh \
-	tests/integration/test_hot_unplug_request.sh
+	tests/integration/test_hot_unplug_request.sh \
+	tests/integration/test_large_multi_peer_transfer.sh
 
 .PHONY: all server client test unit-test integration-test docs clean
 

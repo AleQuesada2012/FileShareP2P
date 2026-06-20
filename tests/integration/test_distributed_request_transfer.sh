@@ -71,7 +71,7 @@ require_log "archivo-p2p.txt" "${ROOT_DIR}/client2.log"
 require_log "${LOCAL_IP}:7311" "${ROOT_DIR}/client2.log"
 require_log "Downloaded file to" "${ROOT_DIR}/client2.log"
 
-DOWNLOADED=$(find "${ROOT_DIR}/peer2" -name 'download_29_*.bin' -print | head -n 1)
+DOWNLOADED=$(find "${ROOT_DIR}/peer2" -name 'download_29_*.txt' -print | head -n 1)
 if [ -z "${DOWNLOADED}" ]; then
     echo "Downloaded file was not created" >&2
     cat "${ROOT_DIR}/client2.log" >&2

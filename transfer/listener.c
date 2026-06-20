@@ -9,6 +9,7 @@ extern flood_config_t global_flood_config;
 
 #include <arpa/inet.h>
 #include <errno.h>
+#include <netdb.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,6 +28,7 @@ typedef struct {
 typedef struct {
     int client_fd;
     char share_folder[PATH_MAX];
+    char peer_ip[P2P_MAX_IP_LEN];
 } request_context_t;
 
 typedef struct {
@@ -126,7 +128,16 @@ static int handle_transfer_request(int client_fd, const char *share_folder, cons
     }
 
     decode_transfer_req(&request, &frame.payload);
+    printf("transfer: incoming request S=%llu H=%llu bytes %llu-%llu\n",
+           (unsigned long long)request.size,
+           (unsigned long long)request.hash,
+           (unsigned long long)request.byte_start,
+           (unsigned long long)request.byte_end);
     if (transfer_send_matching_file(client_fd, share_folder, &request) != 0) {
+        fprintf(stderr,
+                "transfer: requested range unavailable from share folder %s: %s\n",
+                share_folder,
+                strerror(errno));
         (void)send_error(client_fd, P2P_ERROR_INTERNAL, "requested range is unavailable");
         return -1;
     }
@@ -137,27 +148,54 @@ static int handle_transfer_request(int client_fd, const char *share_folder, cons
 static void *request_thread_main(void *arg)
 {
     request_context_t *ctx = (request_context_t *)arg;
-    uint8_t buffer[8192];
+    size_t buffer_capacity = sizeof(p2p_msg_header_t) + sizeof(query_result_t);
+    uint8_t *buffer = (uint8_t *)malloc(buffer_capacity);
     uint32_t bytes_read = 0;
 
-    if (net_recv_msg(ctx->client_fd, buffer, sizeof(buffer), &bytes_read) == 1) {
+    if (buffer == NULL) {
+        net_close(ctx->client_fd);
+        free(ctx);
+        return NULL;
+    }
+
+    if (net_recv_msg(ctx->client_fd, buffer, buffer_capacity, &bytes_read) == 1) {
         if (bytes_read >= sizeof(p2p_msg_header_t)) {
             p2p_msg_header_t *header = (p2p_msg_header_t *)buffer;
             uint16_t opcode = ntohs(header->opcode);
 
             if (opcode == P2P_MSG_TRANSFER_REQ) {
+                printf("transfer: handling TRANSFER_REQ from %s\n", ctx->peer_ip);
                 (void)handle_transfer_request(ctx->client_fd, ctx->share_folder, buffer, bytes_read);
             } else if (opcode == P2P_MSG_QUERY_FLOOD || opcode == P2P_MSG_QUERY_RESULT) {
                 flood_handle_message(buffer, bytes_read, &global_flood_config);
             } else {
+                fprintf(stderr,
+                        "transfer: unknown peer opcode %u from %s\n",
+                        (unsigned)opcode,
+                        ctx->peer_ip);
                 (void)send_error(ctx->client_fd, P2P_ERROR_BAD_REQUEST, "unknown opcode");
             }
         }
     }
 
+    free(buffer);
     net_close(ctx->client_fd);
     free(ctx);
     return NULL;
+}
+
+static void socket_ip_string(const struct sockaddr *addr, socklen_t addr_len, char *dst, size_t dst_size)
+{
+    int rc;
+
+    if (dst_size == 0u) {
+        return;
+    }
+    (void)snprintf(dst, dst_size, "%s", "unknown");
+    rc = getnameinfo(addr, addr_len, dst, (socklen_t)dst_size, NULL, 0, NI_NUMERICHOST);
+    if (rc != 0) {
+        (void)snprintf(dst, dst_size, "%s", "unknown");
+    }
 }
 
 static void *listener_thread_main(void *arg)
@@ -201,6 +239,10 @@ static void *listener_thread_main(void *arg)
 
         request_ctx->client_fd = client_fd;
         (void)snprintf(request_ctx->share_folder, sizeof(request_ctx->share_folder), "%s", listener.share_folder);
+        socket_ip_string((const struct sockaddr *)&peer_addr,
+                         peer_addr_len,
+                         request_ctx->peer_ip,
+                         sizeof(request_ctx->peer_ip));
         if (pthread_create(&request_thread, NULL, request_thread_main, request_ctx) != 0) {
             perror("pthread_create");
             net_close(client_fd);

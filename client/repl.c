@@ -107,7 +107,9 @@ static size_t collect_cached_peers(const search_results_t *last_results,
                                    uint64_t size,
                                    uint64_t hash,
                                    peer_entry_t *peers,
-                                   size_t capacity)
+                                   size_t capacity,
+                                   char *source_name,
+                                   size_t source_name_size)
 {
     size_t count = 0u;
     size_t i;
@@ -125,6 +127,9 @@ static size_t collect_cached_peers(const search_results_t *last_results,
             memset(&peers[count], 0, sizeof(peers[count]));
             (void)snprintf(peers[count].ip, sizeof(peers[count].ip), "%s", item->owner_ip);
             peers[count].data_port = item->owner_port;
+            if (source_name != NULL && source_name_size > 0u && source_name[0] == '\0') {
+                (void)snprintf(source_name, source_name_size, "%s", item->name);
+            }
             count++;
         }
     }
@@ -218,6 +223,8 @@ static size_t refresh_identity_peers(const repl_context_t *ctx,
                                      uint64_t hash,
                                      peer_entry_t *peers,
                                      size_t capacity,
+                                     char *source_name,
+                                     size_t source_name_size,
                                      search_results_t *last_results)
 {
     char identity_term[64];
@@ -237,7 +244,13 @@ static size_t refresh_identity_peers(const repl_context_t *ctx,
         return 0u;
     }
 
-    count = collect_cached_peers(&refreshed, size, hash, peers, capacity);
+    count = collect_cached_peers(&refreshed,
+                                 size,
+                                 hash,
+                                 peers,
+                                 capacity,
+                                 source_name,
+                                 source_name_size);
     printf("Refreshed %zu peer(s) through server identity lookup.\n", count);
     if (count > 0u) {
         remember_results(last_results, &refreshed);
@@ -331,6 +344,7 @@ static void handle_request_command(const repl_context_t *ctx,
     uint64_t size;
     uint64_t hash;
     size_t peer_count;
+    char source_name[P2P_MAX_FILENAME];
     char *cursor = args;
 
     if (parse_u64_arg(&cursor, &size) != 0 ||
@@ -340,9 +354,23 @@ static void handle_request_command(const repl_context_t *ctx,
         return;
     }
 
-    peer_count = refresh_identity_peers(ctx, size, hash, peers, P2P_MAX_RESULTS, last_results);
+    memset(source_name, 0, sizeof(source_name));
+    peer_count = refresh_identity_peers(ctx,
+                                        size,
+                                        hash,
+                                        peers,
+                                        P2P_MAX_RESULTS,
+                                        source_name,
+                                        sizeof(source_name),
+                                        last_results);
     if (peer_count == 0u) {
-        peer_count = collect_cached_peers(last_results, size, hash, peers, P2P_MAX_RESULTS);
+        peer_count = collect_cached_peers(last_results,
+                                          size,
+                                          hash,
+                                          peers,
+                                          P2P_MAX_RESULTS,
+                                          source_name,
+                                          sizeof(source_name));
     }
     if (peer_count == 0u) {
         fprintf(stderr, "No peers found for S=%llu H=%llu.\n",
@@ -351,7 +379,7 @@ static void handle_request_command(const repl_context_t *ctx,
         return;
     }
 
-    if (transfer_request(hash, size, peers, peer_count, ctx->share_folder) != 0) {
+    if (transfer_request(hash, size, peers, peer_count, source_name, ctx->share_folder) != 0) {
         int saved_errno = errno;
         errno = saved_errno;
         perror("transfer_request");

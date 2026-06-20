@@ -17,6 +17,7 @@ int transfer_request(uint64_t hash,
                      uint64_t size,
                      const peer_entry_t *peers,
                      size_t peer_count,
+                     const char *source_name,
                      const char *destination_folder);
 
 #endif

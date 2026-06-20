@@ -70,7 +70,7 @@ require_log "identity-source.txt" "${ROOT_DIR}/client2.log"
 require_log "${LOCAL_IP}:7211" "${ROOT_DIR}/client2.log"
 require_log "Downloaded file to" "${ROOT_DIR}/client2.log"
 
-DOWNLOADED=$(find "${ROOT_DIR}/peer2" -name 'download_5_*.bin' -print | head -n 1)
+DOWNLOADED=$(find "${ROOT_DIR}/peer2" -name 'download_5_*.txt' -print | head -n 1)
 if [ -z "${DOWNLOADED}" ]; then
     echo "Downloaded file was not created" >&2
     cat "${ROOT_DIR}/client2.log" >&2

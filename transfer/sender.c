@@ -185,11 +185,27 @@ int transfer_send_matching_file(int client_fd, const char *share_folder, const t
         return -1;
     }
     if (access(share_folder, R_OK) != 0) {
+        fprintf(stderr,
+                "transfer: share folder unavailable while serving request (%s): %s\n",
+                share_folder,
+                strerror(errno));
         return -1;
     }
     if (find_matching_file_recursive(share_folder, request, path, sizeof(path)) != 0) {
+        fprintf(stderr,
+                "transfer: no local file matches S=%llu H=%llu in %s: %s\n",
+                (unsigned long long)request->size,
+                (unsigned long long)request->hash,
+                share_folder,
+                strerror(errno));
         return -1;
     }
 
+    printf("transfer: serving S=%llu H=%llu bytes %llu-%llu from %s\n",
+           (unsigned long long)request->size,
+           (unsigned long long)request->hash,
+           (unsigned long long)request->byte_start,
+           (unsigned long long)request->byte_end,
+           path);
     return transfer_send_range(client_fd, path, request);
 }
