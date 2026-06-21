@@ -5,13 +5,35 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <signal.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <time.h>
 #include <unistd.h>
 
 enum {
-    NET_MAX_HOST_LITERAL = 256
+    NET_MAX_HOST_LITERAL = 256,
+    NET_CONNECT_ATTEMPTS = 3
 };
+
+static int should_retry_connect(int error)
+{
+    return error == EINTR ||
+           error == ECONNREFUSED ||
+           error == EHOSTUNREACH ||
+           error == ENETUNREACH ||
+           error == ETIMEDOUT;
+}
+
+static void sleep_before_retry(void)
+{
+    struct timespec delay;
+
+    delay.tv_sec = 0;
+    delay.tv_nsec = 100000000L;
+    while (nanosleep(&delay, &delay) == -1 && errno == EINTR) {
+    }
+}
 
 static int copy_string(char *dst, size_t dst_size, const char *src)
 {
@@ -60,6 +82,114 @@ int net_normalize_ip_literal(const char *src, char *dst, size_t dst_size)
     return copy_string(dst, dst_size, src);
 }
 
+static int parse_tcp_port(const char *port, uint16_t *port_out)
+{
+    char *end = NULL;
+    unsigned long value;
+
+    if (port == NULL || port_out == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    errno = 0;
+    value = strtoul(port, &end, 10);
+    if (errno != 0 || end == port || *end != '\0' || value > 65535ul) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    *port_out = (uint16_t)value;
+    return 0;
+}
+
+static int connect_sockaddr_with_retry(int family,
+                                       int socktype,
+                                       int protocol,
+                                       const struct sockaddr *addr,
+                                       socklen_t addr_len)
+{
+    int saved_errno = EHOSTUNREACH;
+    int attempt;
+
+    for (attempt = 0; attempt < NET_CONNECT_ATTEMPTS; ++attempt) {
+        int fd = socket(family, socktype, protocol);
+        if (fd < 0) {
+            saved_errno = errno;
+            continue;
+        }
+
+        if (connect(fd, addr, addr_len) == 0) {
+            return fd;
+        }
+
+        saved_errno = errno;
+        close(fd);
+        if (!should_retry_connect(saved_errno) || attempt + 1 == NET_CONNECT_ATTEMPTS) {
+            break;
+        }
+        sleep_before_retry();
+    }
+
+    errno = saved_errno;
+    return -1;
+}
+
+static int connect_numeric_host(const char *host, const char *port, int *attempted_out)
+{
+    uint16_t port_num;
+    struct in_addr ipv4;
+    struct in6_addr ipv6;
+
+    if (attempted_out != NULL) {
+        *attempted_out = 0;
+    }
+
+    if (parse_tcp_port(port, &port_num) != 0) {
+        if (attempted_out != NULL) {
+            *attempted_out = 1;
+        }
+        return -1;
+    }
+
+    if (inet_pton(AF_INET, host, &ipv4) == 1) {
+        struct sockaddr_in addr;
+
+        if (attempted_out != NULL) {
+            *attempted_out = 1;
+        }
+        memset(&addr, 0, sizeof(addr));
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(port_num);
+        addr.sin_addr = ipv4;
+        return connect_sockaddr_with_retry(AF_INET,
+                                           SOCK_STREAM,
+                                           0,
+                                           (const struct sockaddr *)&addr,
+                                           (socklen_t)sizeof(addr));
+    }
+
+    if (inet_pton(AF_INET6, host, &ipv6) == 1) {
+        struct sockaddr_in6 addr;
+
+        if (attempted_out != NULL) {
+            *attempted_out = 1;
+        }
+        memset(&addr, 0, sizeof(addr));
+        addr.sin6_family = AF_INET6;
+        addr.sin6_port = htons(port_num);
+        addr.sin6_addr = ipv6;
+        return connect_sockaddr_with_retry(AF_INET6,
+                                           SOCK_STREAM,
+                                           0,
+                                           (const struct sockaddr *)&addr,
+                                           (socklen_t)sizeof(addr));
+    }
+
+    errno = EAFNOSUPPORT;
+    return -1;
+}
+
 int net_connect(const char *host, const char *port)
 {
     struct addrinfo hints;
@@ -67,6 +197,8 @@ int net_connect(const char *host, const char *port)
     struct addrinfo *it;
     char normalized_host[NET_MAX_HOST_LITERAL];
     int fd = -1;
+    int numeric_attempted = 0;
+    int saved_errno = EHOSTUNREACH;
     int rc;
 
     if (host == NULL || port == NULL) {
@@ -75,6 +207,16 @@ int net_connect(const char *host, const char *port)
     }
 
     if (net_normalize_ip_literal(host, normalized_host, sizeof(normalized_host)) != 0) {
+        return -1;
+    }
+
+    fd = connect_numeric_host(normalized_host, port, &numeric_attempted);
+    if (fd >= 0) {
+        return fd;
+    }
+    saved_errno = errno;
+    if (numeric_attempted) {
+        errno = saved_errno;
         return -1;
     }
 
@@ -89,20 +231,21 @@ int net_connect(const char *host, const char *port)
     }
 
     for (it = result; it != NULL; it = it->ai_next) {
-        fd = socket(it->ai_family, it->ai_socktype, it->ai_protocol);
-        if (fd < 0) {
-            continue;
-        }
-
-        if (connect(fd, it->ai_addr, it->ai_addrlen) == 0) {
+        fd = connect_sockaddr_with_retry(it->ai_family,
+                                         it->ai_socktype,
+                                         it->ai_protocol,
+                                         it->ai_addr,
+                                         it->ai_addrlen);
+        if (fd >= 0) {
             break;
         }
-
-        close(fd);
-        fd = -1;
+        saved_errno = errno;
     }
 
     freeaddrinfo(result);
+    if (fd < 0) {
+        errno = saved_errno;
+    }
     return fd;
 }
 

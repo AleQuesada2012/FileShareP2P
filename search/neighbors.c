@@ -12,6 +12,7 @@
 
 response_aggregator_t global_aggregator;
 extern flood_config_t global_flood_config;
+static int global_aggregator_ready = 0;
 
 int neighbors_init(neighbor_list_t *neighbors)
 {
@@ -129,9 +130,15 @@ int search_distributed(const char *term, uint8_t ttl, unsigned timeout_ms, searc
         return -1;
     }
 
-    // Preparar el agregador global para una nueva búsqueda
-    aggregator_destroy(&global_aggregator); // Limpiamos por si había basura de otra búsqueda
-    aggregator_init(&global_aggregator);
+    // Preparar el agregador global para una nueva búsqueda sin destruir el mutex que usa el listener.
+    if (!global_aggregator_ready) {
+        if (aggregator_init(&global_aggregator) != 0) {
+            return -1;
+        }
+        global_aggregator_ready = 1;
+    } else if (aggregator_clear(&global_aggregator) != 0) {
+        return -1;
+    }
 
     query_msg_t query;
     memset(&query, 0, sizeof(query));

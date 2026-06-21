@@ -167,8 +167,17 @@ void flood_handle_message(const uint8_t *buffer, uint32_t bytes_read, const floo
                         printf("[P2P Local] ¡Encontré %u coincidencia(s)! Enviando resultado a %s:%u\n",
                                match_count, incoming_query->origin_ip, ntohs(incoming_query->origin_port));
 
-                        send_tcp_frame(incoming_query->origin_ip, ntohs(incoming_query->origin_port),
-                                       P2P_MSG_QUERY_RESULT, &result_msg, payload_size);
+                        if (send_tcp_frame(incoming_query->origin_ip,
+                                           ntohs(incoming_query->origin_port),
+                                           P2P_MSG_QUERY_RESULT,
+                                           &result_msg,
+                                           payload_size) != 0) {
+                            fprintf(stderr,
+                                    "distributed search: could not send result to %s:%u: %s\n",
+                                    incoming_query->origin_ip,
+                                    ntohs(incoming_query->origin_port),
+                                    strerror(errno));
+                        }
                     }
                 } else {
                     fprintf(stderr,
@@ -242,8 +251,17 @@ int flood_forward_query(const query_msg_t *query, const peer_entry_t *sender)
             }
         uint16_t Dport = active_peers[i].data_port;
 
-        send_tcp_frame(active_peers[i].ip, Dport,
-                       P2P_MSG_QUERY_FLOOD, &query_to_forward, sizeof(query_msg_t));
+        if (send_tcp_frame(active_peers[i].ip,
+                           Dport,
+                           P2P_MSG_QUERY_FLOOD,
+                           &query_to_forward,
+                           sizeof(query_msg_t)) != 0) {
+            fprintf(stderr,
+                    "distributed search: could not send query to %s:%u: %s\n",
+                    active_peers[i].ip,
+                    Dport,
+                    strerror(errno));
+        }
     }
 
     return 0;

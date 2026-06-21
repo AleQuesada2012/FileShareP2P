@@ -14,6 +14,20 @@ int aggregator_init(response_aggregator_t *aggregator)
     return pthread_mutex_init(&aggregator->lock, NULL);
 }
 
+int aggregator_clear(response_aggregator_t *aggregator)
+{
+    if (aggregator == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (pthread_mutex_lock(&aggregator->lock) != 0) {
+        return -1;
+    }
+    memset(&aggregator->results, 0, sizeof(aggregator->results));
+    return pthread_mutex_unlock(&aggregator->lock);
+}
+
 void aggregator_destroy(response_aggregator_t *aggregator)
 {
     if (aggregator != NULL) {
