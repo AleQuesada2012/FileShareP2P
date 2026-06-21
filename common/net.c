@@ -159,6 +159,9 @@ static int connect_numeric_host(const char *host, const char *port, int *attempt
             *attempted_out = 1;
         }
         memset(&addr, 0, sizeof(addr));
+#if defined(__APPLE__) && defined(__MACH__)
+        addr.sin_len = (unsigned char)sizeof(addr);
+#endif
         addr.sin_family = AF_INET;
         addr.sin_port = htons(port_num);
         addr.sin_addr = ipv4;
@@ -176,6 +179,9 @@ static int connect_numeric_host(const char *host, const char *port, int *attempt
             *attempted_out = 1;
         }
         memset(&addr, 0, sizeof(addr));
+#if defined(__APPLE__) && defined(__MACH__)
+        addr.sin6_len = (unsigned char)sizeof(addr);
+#endif
         addr.sin6_family = AF_INET6;
         addr.sin6_port = htons(port_num);
         addr.sin6_addr = ipv6;
@@ -215,10 +221,6 @@ int net_connect(const char *host, const char *port)
         return fd;
     }
     saved_errno = errno;
-    if (numeric_attempted) {
-        errno = saved_errno;
-        return -1;
-    }
 
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_UNSPEC;

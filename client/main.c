@@ -118,7 +118,11 @@ int main(int argc, char **argv)
     scanner_print_result(&scan);
 
     if (server_register_files(ctx.server_ip, ctx.server_port, ctx.data_port, &scan, &register_response) != 0) {
-        fprintf(stderr, "Warning: registration failed; continuing with local REPL.\n");
+        fprintf(stderr,
+                "Warning: registration failed with server %s:%s: %s; continuing with local REPL.\n",
+                ctx.server_ip,
+                ctx.server_port,
+                strerror(errno));
     } else {
         printf("Registered %zu file(s) with server %s:%s; received %u neighbor(s).\n",
                scan.count, ctx.server_ip, ctx.server_port, (unsigned)register_response.neighbor_count);
