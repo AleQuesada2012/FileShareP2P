@@ -417,12 +417,18 @@ static void *client_thread_main(void *arg)
 
 static void socket_ip_string(const struct sockaddr *addr, socklen_t addr_len, char *dst, size_t dst_size)
 {
+    char raw[P2P_MAX_IP_LEN];
     int rc;
 
     copy_cstr(dst, dst_size, "unknown");
-    rc = getnameinfo(addr, addr_len, dst, (socklen_t)dst_size, NULL, 0, NI_NUMERICHOST);
+    copy_cstr(raw, sizeof(raw), "unknown");
+    rc = getnameinfo(addr, addr_len, raw, (socklen_t)sizeof(raw), NULL, 0, NI_NUMERICHOST);
     if (rc != 0) {
         copy_cstr(dst, dst_size, "unknown");
+        return;
+    }
+    if (net_normalize_ip_literal(raw, dst, dst_size) != 0) {
+        copy_cstr(dst, dst_size, raw);
     }
 }
 

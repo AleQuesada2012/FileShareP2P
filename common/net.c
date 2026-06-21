@@ -3,14 +3,57 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netdb.h>
+#include <netinet/in.h>
 #include <signal.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
+static int copy_string(char *dst, size_t dst_size, const char *src)
+{
+    size_t len;
+
+    if (dst == NULL || dst_size == 0u || src == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (dst == src) {
+        return 0;
+    }
+
+    len = strlen(src);
+    if (len >= dst_size) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+
+    memcpy(dst, src, len + 1u);
+    return 0;
+}
+
 int net_ignore_sigpipe(void)
 {
     return signal(SIGPIPE, SIG_IGN) == SIG_ERR ? -1 : 0;
+}
+
+int net_normalize_ip_literal(const char *src, char *dst, size_t dst_size)
+{
+    static const char mapped_prefix[] = "::ffff:";
+    struct in_addr mapped_v4;
+    const char *mapped_value;
+
+    if (src == NULL || dst == NULL || dst_size == 0u) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    mapped_value = src + sizeof(mapped_prefix) - 1u;
+    if (strncmp(src, mapped_prefix, sizeof(mapped_prefix) - 1u) == 0 &&
+        inet_pton(AF_INET, mapped_value, &mapped_v4) == 1) {
+        return inet_ntop(AF_INET, &mapped_v4, dst, (socklen_t)dst_size) == NULL ? -1 : 0;
+    }
+
+    return copy_string(dst, dst_size, src);
 }
 
 int net_connect(const char *host, const char *port)
@@ -18,6 +61,7 @@ int net_connect(const char *host, const char *port)
     struct addrinfo hints;
     struct addrinfo *result = NULL;
     struct addrinfo *it;
+    char normalized_host[NI_MAXHOST];
     int fd = -1;
     int rc;
 
@@ -26,11 +70,15 @@ int net_connect(const char *host, const char *port)
         return -1;
     }
 
+    if (net_normalize_ip_literal(host, normalized_host, sizeof(normalized_host)) != 0) {
+        return -1;
+    }
+
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
 
-    rc = getaddrinfo(host, port, &hints, &result);
+    rc = getaddrinfo(normalized_host, port, &hints, &result);
     if (rc != 0) {
         errno = EHOSTUNREACH;
         return -1;
@@ -216,6 +264,7 @@ int net_get_local_ip(const char *remote_host, const char *remote_port, char *loc
     struct addrinfo hints;
     struct addrinfo *result = NULL;
     struct addrinfo *it;
+    char normalized_remote[NI_MAXHOST];
     int fd = -1;
     int rc;
 
@@ -224,11 +273,15 @@ int net_get_local_ip(const char *remote_host, const char *remote_port, char *loc
         return -1;
     }
 
+    if (net_normalize_ip_literal(remote_host, normalized_remote, sizeof(normalized_remote)) != 0) {
+        return -1;
+    }
+
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_DGRAM;
 
-    rc = getaddrinfo(remote_host, remote_port, &hints, &result);
+    rc = getaddrinfo(normalized_remote, remote_port, &hints, &result);
     if (rc != 0) {
         return -1;
     }
@@ -245,10 +298,31 @@ int net_get_local_ip(const char *remote_host, const char *remote_port, char *loc
             if (getsockname(fd, (struct sockaddr *)&local_addr, &addr_len) == 0) {
                 if (local_addr.ss_family == AF_INET) {
                     struct sockaddr_in *s = (struct sockaddr_in *)&local_addr;
-                    inet_ntop(AF_INET, &s->sin_addr, local_ip, max_len);
+                    if (inet_ntop(AF_INET, &s->sin_addr, local_ip, (socklen_t)max_len) == NULL) {
+                        close(fd);
+                        freeaddrinfo(result);
+                        return -1;
+                    }
                 } else if (local_addr.ss_family == AF_INET6) {
                     struct sockaddr_in6 *s = (struct sockaddr_in6 *)&local_addr;
-                    inet_ntop(AF_INET6, &s->sin6_addr, local_ip, max_len);
+                    if (IN6_IS_ADDR_V4MAPPED(&s->sin6_addr)) {
+                        struct in_addr mapped_v4;
+                        memcpy(&mapped_v4, &s->sin6_addr.s6_addr[12], sizeof(mapped_v4));
+                        if (inet_ntop(AF_INET, &mapped_v4, local_ip, (socklen_t)max_len) == NULL) {
+                            close(fd);
+                            freeaddrinfo(result);
+                            return -1;
+                        }
+                    } else if (inet_ntop(AF_INET6, &s->sin6_addr, local_ip, (socklen_t)max_len) == NULL) {
+                        close(fd);
+                        freeaddrinfo(result);
+                        return -1;
+                    }
+                } else {
+                    close(fd);
+                    freeaddrinfo(result);
+                    errno = EAFNOSUPPORT;
+                    return -1;
                 }
                 close(fd);
                 freeaddrinfo(result);

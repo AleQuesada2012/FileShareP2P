@@ -81,18 +81,30 @@ static void encode_file_meta(file_meta_t *dst, const file_meta_t *src)
 
 static void decode_file_meta(file_meta_t *dst, const file_meta_t *src)
 {
+    char owner_ip[P2P_MAX_IP_LEN];
+
     *dst = *src;
     dst->name[P2P_MAX_FILENAME - 1u] = '\0';
     dst->hash = net_to_host64(src->hash);
     dst->size_bytes = net_to_host64(src->size_bytes);
     dst->owner_ip[P2P_MAX_IP_LEN - 1u] = '\0';
+    copy_cstr(owner_ip, sizeof(owner_ip), dst->owner_ip);
+    if (net_normalize_ip_literal(owner_ip, dst->owner_ip, sizeof(dst->owner_ip)) != 0) {
+        copy_cstr(dst->owner_ip, sizeof(dst->owner_ip), owner_ip);
+    }
     dst->owner_port = ntohs(src->owner_port);
 }
 
 static void decode_peer(peer_entry_t *dst, const peer_entry_t *src)
 {
+    char ip[P2P_MAX_IP_LEN];
+
     *dst = *src;
     dst->ip[P2P_MAX_IP_LEN - 1u] = '\0';
+    copy_cstr(ip, sizeof(ip), dst->ip);
+    if (net_normalize_ip_literal(ip, dst->ip, sizeof(dst->ip)) != 0) {
+        copy_cstr(dst->ip, sizeof(dst->ip), ip);
+    }
     dst->data_port = ntohs(src->data_port);
     dst->last_seen_epoch = net_to_host64(src->last_seen_epoch);
 }

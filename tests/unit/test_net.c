@@ -29,6 +29,14 @@ int main(void)
     net_close(fds[0]);
     net_close(fds[1]);
 
+    /* IPv4-mapped IPv6 literals should be dialed and advertised as plain IPv4 on mixed macOS/Linux LANs. */
+    assert(net_normalize_ip_literal("::ffff:192.168.1.26", buffer, sizeof(buffer)) == 0);
+    assert(strcmp(buffer, "192.168.1.26") == 0);
+
+    /* Already-normal IPv4 literals should pass through unchanged. */
+    assert(net_normalize_ip_literal("127.0.0.1", buffer, sizeof(buffer)) == 0);
+    assert(strcmp(buffer, "127.0.0.1") == 0);
+
     puts("test_net: ok");
     return 0;
 }

@@ -129,6 +129,7 @@ void flood_handle_message(const uint8_t *buffer, uint32_t bytes_read, const floo
                     peer_entry_t origin_peer;
                     memset(&origin_peer, 0, sizeof(origin_peer));
                     strncpy(origin_peer.ip, incoming_query->origin_ip, P2P_MAX_IP_LEN - 1);
+                    origin_peer.ip[P2P_MAX_IP_LEN - 1] = '\0';
                     origin_peer.data_port = ntohs(incoming_query->origin_port);
                     if (origin_peer.ip[0] != '\0' && origin_peer.data_port != 0) {
                         neighbors_add(&global_neighbors, &origin_peer);
@@ -188,6 +189,17 @@ void flood_handle_message(const uint8_t *buffer, uint32_t bytes_read, const floo
 
             for (uint32_t i = 0; i < count; i++) {
                 file_meta_t received_file = incoming_result->results[i];
+                char owner_ip[P2P_MAX_IP_LEN];
+
+                received_file.owner_ip[P2P_MAX_IP_LEN - 1u] = '\0';
+                strncpy(owner_ip, received_file.owner_ip, sizeof(owner_ip) - 1u);
+                owner_ip[sizeof(owner_ip) - 1u] = '\0';
+                if (net_normalize_ip_literal(owner_ip,
+                                             received_file.owner_ip,
+                                             sizeof(received_file.owner_ip)) != 0) {
+                    strncpy(received_file.owner_ip, owner_ip, sizeof(received_file.owner_ip) - 1u);
+                    received_file.owner_ip[sizeof(received_file.owner_ip) - 1u] = '\0';
+                }
                 received_file.owner_port = ntohs(received_file.owner_port);
 
                 received_file.hash = net_to_host64(received_file.hash);

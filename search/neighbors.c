@@ -1,6 +1,7 @@
 #include "search/neighbors.h"
 #include "search/aggregator.h"
 #include "search/flood.h"
+#include "common/net.h"
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -32,6 +33,8 @@ void neighbors_destroy(neighbor_list_t *neighbors)
 
 int neighbors_add(neighbor_list_t *neighbors, const peer_entry_t *peer)
 {
+    peer_entry_t normalized_peer;
+    char normalized_ip[P2P_MAX_IP_LEN];
     size_t i;
 
     if (neighbors == NULL || peer == NULL) {
@@ -39,14 +42,26 @@ int neighbors_add(neighbor_list_t *neighbors, const peer_entry_t *peer)
         return -1;
     }
 
+    normalized_peer = *peer;
+    normalized_peer.ip[P2P_MAX_IP_LEN - 1u] = '\0';
+    if (net_normalize_ip_literal(normalized_peer.ip,
+                                 normalized_ip,
+                                 sizeof(normalized_ip)) == 0) {
+        strncpy(normalized_peer.ip, normalized_ip, sizeof(normalized_peer.ip) - 1u);
+        normalized_peer.ip[sizeof(normalized_peer.ip) - 1u] = '\0';
+    } else {
+        normalized_peer = *peer;
+        normalized_peer.ip[P2P_MAX_IP_LEN - 1u] = '\0';
+    }
+
     if (pthread_mutex_lock(&neighbors->lock) != 0) {
         return -1;
     }
 
     for (i = 0u; i < neighbors->count; ++i) {
-        if (strcmp(neighbors->peers[i].ip, peer->ip) == 0 &&
-            neighbors->peers[i].data_port == peer->data_port) {
-            neighbors->peers[i] = *peer;
+        if (strcmp(neighbors->peers[i].ip, normalized_peer.ip) == 0 &&
+            neighbors->peers[i].data_port == normalized_peer.data_port) {
+            neighbors->peers[i] = normalized_peer;
             neighbors->peers[i].last_seen_epoch = (uint64_t)time(NULL);
             return pthread_mutex_unlock(&neighbors->lock);
         }
@@ -58,7 +73,7 @@ int neighbors_add(neighbor_list_t *neighbors, const peer_entry_t *peer)
         return -1;
     }
 
-    neighbors->peers[neighbors->count] = *peer;
+    neighbors->peers[neighbors->count] = normalized_peer;
     neighbors->peers[neighbors->count].last_seen_epoch = (uint64_t)time(NULL);
     neighbors->count++;
 

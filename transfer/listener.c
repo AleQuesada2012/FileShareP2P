@@ -186,15 +186,21 @@ static void *request_thread_main(void *arg)
 
 static void socket_ip_string(const struct sockaddr *addr, socklen_t addr_len, char *dst, size_t dst_size)
 {
+    char raw[P2P_MAX_IP_LEN];
     int rc;
 
     if (dst_size == 0u) {
         return;
     }
     (void)snprintf(dst, dst_size, "%s", "unknown");
-    rc = getnameinfo(addr, addr_len, dst, (socklen_t)dst_size, NULL, 0, NI_NUMERICHOST);
+    (void)snprintf(raw, sizeof(raw), "%s", "unknown");
+    rc = getnameinfo(addr, addr_len, raw, (socklen_t)sizeof(raw), NULL, 0, NI_NUMERICHOST);
     if (rc != 0) {
         (void)snprintf(dst, dst_size, "%s", "unknown");
+        return;
+    }
+    if (net_normalize_ip_literal(raw, dst, dst_size) != 0) {
+        (void)snprintf(dst, dst_size, "%s", raw);
     }
 }
 
