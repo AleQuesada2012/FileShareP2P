@@ -9,6 +9,10 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+enum {
+    NET_MAX_HOST_LITERAL = 256
+};
+
 static int copy_string(char *dst, size_t dst_size, const char *src)
 {
     size_t len;
@@ -61,7 +65,7 @@ int net_connect(const char *host, const char *port)
     struct addrinfo hints;
     struct addrinfo *result = NULL;
     struct addrinfo *it;
-    char normalized_host[NI_MAXHOST];
+    char normalized_host[NET_MAX_HOST_LITERAL];
     int fd = -1;
     int rc;
 
@@ -264,7 +268,7 @@ int net_get_local_ip(const char *remote_host, const char *remote_port, char *loc
     struct addrinfo hints;
     struct addrinfo *result = NULL;
     struct addrinfo *it;
-    char normalized_remote[NI_MAXHOST];
+    char normalized_remote[NET_MAX_HOST_LITERAL];
     int fd = -1;
     int rc;
 
