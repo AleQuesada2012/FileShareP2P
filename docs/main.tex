@@ -396,22 +396,43 @@ mismo protocolo.
 
 \newpage
 \section{Descripción de la experiencia}
+
+El desarrollo de este proyecto fue un proceso bastante iterativo en el que
+fuimos armando las piezas poco a poco. Desde el inicio nos dividimos las
+responsabilidades por secciones: Jose se encargó del servidor y el protocolo,
+Alejandro del cliente, la red y la transferencia de archivos, y Angie de la
+búsqueda distribuida y la documentación. Esa división funcionó bien en general,
+aunque hubo momentos donde los tres teníamos que reunirnos a discutir algunas decisiones generales.
+
+
+La primera fase fue relativamente tranquila. Definir el protocolo, implementar
+la función de hash y armar el esqueleto del proyecto nos permitió tener una base
+sólida antes de entrar a la parte más compleja. El contrato compartido en
+\texttt{common/protocol.h} nos ahorró bastantes dolores de cabeza después,
+porque todos sabíamos exactamente qué campos esperar en cada mensaje y cómo
+serializar los datos.
+
+
+Donde sí nos costó un poco fue con la búsqueda distribuida. Las primeras aproximaciones
+que hicimos eran esencialmente locales, es decir, toda la comunicación funcionaba solamente si era entre terminales de una misma computadora, esto porque no se estaba buscando la conexión IP del cliente. No bastaba con tener la lista de vecinos, había que manejar el TTL,
+evitar ciclos con los identificadores de consulta, agregar las respuestas que
+iban llegando de forma asíncrona y todo eso sin bloquear la consola del cliente.
+Fue la parte del proyecto que más intervenciones y arreglos requirió hasta que funcionó correctamente.
+
+
+En general, la experiencia fue positiva. El proyecto nos obligó a lidiar con
+problemas reales de sistemas distribuidos como la comunicación entre procesos, la
+concurrencia, la sincronización y la tolerancia a fallos. No fue un camino
+lineal, hubo retrocesos y momentos de frustración, pero al final todo se logró cumplir.
+
 \newpage
 \section{Aprendizajes personales}
 
-\subsection{Jose Herrera}
+\subsection{Jose Adrián Herrera Salas}
 
-Desde el rol de servidor y protocolo, el principal aprendizaje fue comprender
-que una arquitectura distribuida depende mucho de la claridad del contrato entre
-módulos. Definir los mensajes, los campos obligatorios, la identidad de los
-archivos, el orden de bytes y las respuestas de error no fue solo una tarea de
-diseño, sino una base para que el cliente y la búsqueda distribuida pudieran
-integrarse sin ambigüedades. Además, el trabajo con el registro de pares mostró
-la importancia de proteger estructuras compartidas con mutex y de diseñar un
-servidor que continúe funcionando aunque un cliente envíe mensajes inválidos o
-se desconecte inesperadamente.
+Durante el desarrollo de este proyecto, uno de los aprendizajes más valiosos fue comprender la importancia del trabajo en equipo dentro de un proyecto de software de este nivel de complejidad. La implementación de un sistema distribuido requirió una comunicación constante entre los integrantes para coordinar el desarrollo de los diferentes módulos, definir interfaces claras y asegurar que cada componente pudiera integrarse correctamente con el resto del sistema. Esta experiencia permitió fortalecer habilidades de colaboración, organización y resolución conjunta de problemas, demostrando que un equipo bien coordinado no solo mejora la calidad del producto final, sino que también hace más eficiente el proceso de desarrollo. Asimismo, se evidenció la importancia de compartir conocimientos entre los miembros del grupo, ya que esto facilitó superar obstáculos técnicos y permitió que todos tuvieran una comprensión integral del funcionamiento del proyecto.
 
-\subsection{Alejandro Quesada}
+\subsection{Alejandro Quesada Calderón}
 
 Desde el rol de cliente, red y transferencia, el aprendizaje más importante fue
 pasar de una interfaz de consola sencilla a un flujo completo de comunicación
@@ -423,16 +444,9 @@ La implementación de \verb|request <S> <H>| permitió ver con claridad la relac
 entre metadatos, búsqueda previa, refresco de pares y ensamblaje final del
 archivo descargado.
 
-\subsection{Angie Esquivel}
+\subsection{Angie Esquivel López}
 
-Desde el rol de búsqueda distribuida y documentación, el aprendizaje principal
-fue que un sistema P2P necesita controlar la propagación para ser útil. La lista
-de vecinos, los identificadores de consulta, la deduplicación, el TTL y la
-agregación de respuestas trabajan juntos para permitir que una búsqueda encuentre
-archivos sin saturar la red ni bloquear la consola del cliente. También quedó
-claro que la documentación debe mantenerse cerca de la implementación: explicar
-las decisiones de diseño, las pruebas y las limitaciones ayuda a que el proyecto
-sea entendible para el equipo y reproducible en el ambiente de evaluación.
+Desde que el profesor nos brindó las indicaciones de este proyecto, supe que este iba a ser un reto grande para nosotros. A la hora de implementarlo fue de suma importancia un buen trabajo en equipo, y equitativo, ya que este proyecto lo considero bastante grande, y lo más justo es que cada quien tuviera una carga de trabajo parecida. También aprendí como funciona la comunicación entre clientes y que un sistema P2P necesita controlar la propagación para ser útil.
 
 
 
