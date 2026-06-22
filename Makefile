@@ -142,4 +142,4 @@ docs:
 	fi
 
 clean:
-	rm -rf $(BUILD_DIR) docs/*.aux docs/*.bbl docs/*.blg docs/*.fdb_latexmk docs/*.fls docs/*.log docs/*.out docs/*.pdf docs/*.synctex.gz docs/*.toc
+	rm -rf $(BUILD_DIR) docs/*.aux docs/*.bbl docs/*.blg docs/*.fdb_latexmk docs/*.fls docs/*.log docs/*.out docs/*.synctex.gz docs/*.toc

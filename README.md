@@ -2,164 +2,196 @@
 
 P2P file-sharing simulator over TCP sockets for IC-6600 Principios de Sistemas Operativos, ITCR I Semestre 2026.
 
-This repository is now in Phase 2 integration. Phase 1 foundations are in
-place, and the main Phase 2 discovery and transfer pieces are available:
-clients can register, run centralized search, run distributed `find -d`, use
-plain `find` with server-first fallback, refresh request peers by file identity,
-and request a found file from one or more peers.
+## Final Project Status
 
-## Current Development Phase
+The project is complete on `dev` and ready to be merged into `main`.
 
-The current development phase is **Phase 2**. The project has moved beyond the
-Phase 1 shared-contract milestone because server registration/search, client
-registration, distributed search, segmented transfer, plain `find` fallback,
-hot-unplug smoke validation, and a gated large-file multi-peer transfer test
-are now implemented.
+The implementation now satisfies the planned simulator flow from `Proyecto2.tex`
+and `AGENTS.md`:
 
-## Phase 1 Foundation Status
-
-Phase 1 is about stable shared contracts, not a complete simulator.
-
-Current Phase 1 deliverables:
-
-| Area | Owner | Status |
-|---|---|---|
-| Wire protocol structs and opcodes | Student 1 | Defined in `common/protocol.h`; changes require team review |
-| Deterministic file hash | Student 1 | Implemented with FNV-1a `uint64_t` hashing |
-| Hash unit tests | Student 1 | Covers known answer, empty file, binary data, large file, missing path |
-| Socket wrapper API | Student 2 | Implemented in `common/net.c` / `common/net.h` |
-| Net/protocol smoke tests | Student 2 + all | Length-frame and protocol round-trip tests pass |
-| Repository skeleton | Student 3 | Module directories, Makefile, and LaTeX shell exist |
-
-Phase 1 exit criteria:
-
-| Criterion | Current result |
-|---|---|
-| `make` compiles without errors | Passing |
-| Hash function passes tests | Passing |
-| Two endpoints can exchange a framed message | Passing via `test_net` and `test_protocol_roundtrip` |
+- Clients scan their share folder, compute file metadata, and register with the
+  central server.
+- The server stores peer/file metadata, handles `REGISTER`, filename `FIND`,
+  identity `(S,H)` lookup, recent-peer responses, error responses, and demo
+  logging.
+- The client REPL supports `find -s <name>`, `find -d <name>`, plain
+  `find <name>` with server-first fallback, and `request <S> <H>`.
+- Transfers are performed over TCP by byte range, can split a download across
+  multiple peers, reassemble the file locally, and preserve the original
+  filename reported by search results.
+- Distributed search uses neighbor seeding, TCP flood messages, query-ID
+  deduplication, TTL control, response aggregation, and the unified client data
+  port.
+- Hot-unplug behavior is handled defensively so missing source or destination
+  share folders produce warnings instead of crashing the client or server.
+- Unit tests and integration tests cover the main shared contracts, server,
+  client/search/transfer behavior, and final smoke scenarios.
+- The LaTeX report is in `docs/main.tex`, uses local images from `docs/img/`,
+  references from `docs/ref.bib`, and builds to `docs/main.pdf`.
 
 ## Repository Layout
 
 ```text
-├── common/           # Shared protocol structs, hash, socket wrappers
-├── server/           # Student 1: registry and server query handling
-├── client/           # Student 2: startup, scanner, REPL
-├── transfer/         # Student 2: segmented file sender and receiver
-├── search/           # Student 3: neighbors, flood search, aggregator
-├── docs/             # Student 3: LaTeX report
+├── common/            # Shared protocol structs, hash, socket wrappers
+├── server/            # Student 1: registry and server query handling
+├── client/            # Student 2: startup, scanner, server API, REPL
+├── transfer/          # Student 2: segmented file sender and receiver
+├── search/            # Student 3: neighbors, flood search, aggregator
+├── docs/
+│   ├── img/           # Report images, kept beside main.tex
+│   ├── main.tex       # Spanish LaTeX report
+│   ├── main.pdf       # Built Spanish report
+│   └── ref.bib        # Report bibliography
 ├── tests/
-│   ├── unit/         # Unit and smoke tests
-│   └── integration/  # Integration test notes/scaffold
+│   ├── unit/          # Unit and smoke tests
+│   └── integration/   # Multi-process integration tests
 ├── Makefile
-├── AGENTS.md         # Full project plan, ownership, rubric, timeline
+├── AGENTS.md          # Project plan, ownership, rubric, timeline
+├── breakdown.md       # Final repo state by student role
 └── README.md
 ```
 
-## Build And Test
+## Build, Test, And Docs
+
+Build the binaries:
 
 ```sh
 make
+```
+
+Run the full default test suite:
+
+```sh
 make test
 ```
 
-The default integration suite includes a large-file smoke script that is skipped
-unless explicitly enabled. To run the 3-client `.mkv` split-transfer scenario
-against the local `./share/` video:
+`make test` runs unit tests and integration tests. The large 3-client `.mkv`
+split-transfer script is part of the integration list, but it skips itself unless
+explicitly enabled. To run that final large-file scenario with the local
+`./share/` video:
 
 ```sh
 RUN_LARGE_INTEGRATION=1 sh tests/integration/test_large_multi_peer_transfer.sh
 ```
 
-Build outputs:
+Build the Spanish LaTeX report:
+
+```sh
+make docs
+```
+
+`make docs` requires both `pdflatex` and `bibtex` from a TeX Live/MacTeX style
+installation. The build runs from `docs/`, using `docs/img/` and `docs/ref.bib`
+the same way an Overleaf project would.
+
+Clean build artifacts:
+
+```sh
+make clean
+```
+
+## Running The Simulator
+
+After `make`, the binaries are:
 
 ```text
 build/server/p2p-server
 build/client/p2p-client
 ```
 
-Documentation build:
-
-```sh
-make docs
-```
-
-`make docs` requires `pdflatex`. Generated LaTeX artifacts and `build/` are removed by:
-
-```sh
-make clean
-```
-
-## Running The Current Binaries
-
-The binaries compile, and central-server search, distributed `find -d`, plain
-`find <name>` fallback, request identity refresh, and transfer are available for
-local integration testing.
+Start the server:
 
 ```sh
 build/server/p2p-server <listen_port>
+```
+
+Start each client:
+
+```sh
 build/client/p2p-client <server_ip> <server_port> <data_port> <share_folder> [--ttl <n>] [--search-timeout <ms>]
 ```
 
-Current runtime status:
+Available REPL commands:
 
-| Command or feature | Current behavior |
+| Command | Behavior |
 |---|---|
-| Server registration handling | Accepts `REGISTER` requests, stores peer metadata, and returns recent peers |
-| Server `FIND` handling | Accepts filename searches and `(S,H)` identity lookups, returning matching `(S, H, IP, port, name)` results |
-| Client startup scan | Implemented locally, then sends a `REGISTER` request to the server |
-| REPL `find -s <name>` | Sends a central-server `FIND` request and prints returned `(S, H, IP, port, name)` results |
-| REPL `find -d <name>` | Sends a distributed flood query to known neighbors and prints collected results |
-| REPL `find <name>` | Tries the server first; falls back to distributed search when the server fails or returns no results |
-| REPL `request <S> <H>` | Refreshes peers with central identity `FIND`, falls back to cached matching results if needed, downloads equal byte ranges from available peers, and writes the file with its original result filename |
-| Incoming transfer listener | Starts on the client data port and accepts `TRANSFER_REQ` messages |
-| Transfer sender | Sends requested byte ranges as `TRANSFER_DATA` frames |
-| Transfer receiver / file assembly | Splits ranges across peers and assembles a completed file |
-| Distributed search flood | Runs on the unified client data port, forwards query messages with TTL, deduplicates query IDs, and aggregates responses |
-| Hot-unplug handling | Missing source or destination share folders produce warnings and the REPL/server continue running; local smoke coverage exists |
-| Runtime logging | The server logs accepted connections, `REGISTER`, `FIND`, malformed requests, and unsupported opcodes; transfer paths log range requests and safety fallbacks |
+| `find -s <name>` | Centralized search through the server |
+| `find -d <name>` | Distributed search through known neighbors |
+| `find <name>` | Server-first search with distributed fallback |
+| `request <S> <H>` | Refreshes peers by file identity and downloads the file |
+| `quit` / `exit` | Ends the client |
 
-For `request <S> <H>`, the frozen protocol uses the existing
-`P2P_MSG_FIND_REQ` / `P2P_MSG_FIND_RESP` exchange. Send `find_req_t.term` as
-`"<S> <H>"`, `"S=<S> H=<H>"`, or `"<S>:<H>"`; the server returns all peers
-whose file identity matches `size_bytes == S` and `hash == H`.
+## Final Feature Matrix
 
-Distributed `find -d` uses the client's startup scan metadata when answering
-flood queries. Earlier video searches could miss the default 2-second response
-window because the receiver re-scanned and re-hashed large files during each
-query; the file size was slowing local metadata generation, not exceeding a wire
-protocol size limit. The flood path now reuses the already computed metadata
-and uses dynamically sized query-result buffers.
+| Area | Status |
+|---|---|
+| Protocol contract | Implemented in `common/protocol.h`; treated as frozen |
+| Hash function | Implemented with deterministic FNV-1a `uint64_t` hashing |
+| Socket wrappers | Implemented in `common/net.c` / `common/net.h` |
+| Server registration | Implemented, logged, and tested |
+| Server `FIND` | Filename and `(S,H)` identity lookup implemented |
+| Client startup | CLI parsing, scan, listener startup, and registration implemented |
+| Central search | `find -s <name>` implemented |
+| Distributed search | `find -d <name>` implemented with TTL and deduplication |
+| Plain search fallback | `find <name>` implemented |
+| File request | `request <S> <H>` implemented with identity refresh and cached fallback |
+| Segmented transfer | Implemented across one or more peers |
+| Filename preservation | Downloaded files keep the original result filename |
+| Hot-unplug safety | Covered by defensive checks and integration smoke behavior |
+| Integration tests | Central, distributed, request, fallback, hot-unplug, and gated large-file paths exist |
+| Documentation | Spanish LaTeX source and PDF are present under `docs/` |
 
 ## Protocol Contract
 
-The shared protocol lives in `common/protocol.h` and is the main Phase 1 freeze point.
+The shared protocol lives in `common/protocol.h`.
 
 Important rules:
 
-- TCP messages use `net_send_msg` / `net_recv_msg` as the outer length-prefixed frame.
-- The frame payload starts with `p2p_msg_header_t`, followed by the opcode-specific payload.
+- TCP messages use `net_send_msg` / `net_recv_msg` as the outer
+  length-prefixed frame.
+- The frame payload starts with `p2p_msg_header_t`, followed by the
+  opcode-specific payload.
 - `p2p_msg_header_t.payload_len` is the number of bytes after the header.
-- Multi-byte integers must be encoded in network byte order before transmission.
+- Multi-byte integers must be encoded in network byte order before
+  transmission.
 - Fixed-size string fields must be null-terminated when populated.
-- Structs must be zeroed or serialized into explicit byte buffers before sending.
+- Structs must be zeroed or serialized into explicit byte buffers before
+  sending.
 - `register_resp_t.neighbors` excludes the peer that just registered.
 - Distributed search uses TCP for this iteration.
+- `request <S> <H>` refreshes peers through the existing `FIND` request instead
+  of adding a separate metadata-only opcode.
 
-Do not change `common/protocol.h` without coordinating with all owners.
+Do not change `common/protocol.h` after this point unless all owners agree.
 
-## Phase 2 Starting Points
+## Final Merge Checklist
 
-Recommended next implementation and validation work:
+Before merging `dev` into `main`:
 
-| Owner | Next task |
-|---|---|
-| Student 1 | Stress-test server registration and `FIND` with 3+ clients |
-| Student 2 | Repeat large-file and hot-unplug checks on Linux, then capture measurements for the report |
-| Student 3 | Harden distributed search for multi-hop LAN runs and document TTL/window behavior |
+```sh
+git switch dev
+git pull
+make
+make test
+make docs
+git status
+```
 
-Keep commits focused by ownership area. Changes to `common/` need extra care because all modules depend on it.
+Then merge by the workflow agreed in `AGENTS.md`:
+
+```sh
+git switch main
+git pull
+git merge --no-ff dev
+git push
+```
+
+If the protected-branch workflow is enforced on GitHub, open a PR from `dev` to
+`main` instead of pushing directly.
 
 ## Portability
 
-Target environment is standard Linux with C99 and POSIX sockets/pthreads. The Makefile also supports local macOS development by adding `_DARWIN_C_SOURCE` when needed. External dependencies should stay within standard POSIX facilities unless the team updates the project plan.
+Target environment is standard Linux with C99 and POSIX sockets/pthreads. The
+Makefile also supports local macOS development by adding `_DARWIN_C_SOURCE` when
+needed. External dependencies stay within standard POSIX facilities plus a
+standard LaTeX distribution for report generation.
