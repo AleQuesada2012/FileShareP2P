@@ -209,3 +209,17 @@ Proyecto2.tex
 
 # Project build output
 build/
+
+# sample share folder for testing
+share/
+
+# latex partial files
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.toc

@@ -21,6 +21,6 @@ int neighbors_init(neighbor_list_t *neighbors);
 void neighbors_destroy(neighbor_list_t *neighbors);
 int neighbors_add(neighbor_list_t *neighbors, const peer_entry_t *peer);
 size_t neighbors_snapshot(neighbor_list_t *neighbors, peer_entry_t *out, size_t capacity);
-int search_distributed(const char *term, search_results_t *results_out);
+int search_distributed(const char *term, uint8_t ttl, unsigned timeout_ms, search_results_t *results_out);
 
 #endif
