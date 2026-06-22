@@ -239,23 +239,33 @@ int transfer_receive_segment(int peer_fd,
     return receive_segment_frames(peer_fd, &segment);
 }
 
-static const char *extension_from_name(const char *source_name)
+static const char *download_name_from_source(const char *source_name)
 {
     const char *name;
-    const char *dot;
+    const char *slash;
+    const char *backslash;
 
     if (source_name == NULL || source_name[0] == '\0') {
-        return "";
+        return NULL;
     }
 
-    name = strrchr(source_name, '/');
-    name = name == NULL ? source_name : name + 1;
-    dot = strrchr(name, '.');
-    if (dot == NULL || dot == name || dot[1] == '\0') {
-        return "";
+    slash = strrchr(source_name, '/');
+    backslash = strrchr(source_name, '\\');
+    if (slash != NULL && backslash != NULL) {
+        name = slash > backslash ? slash + 1 : backslash + 1;
+    } else if (slash != NULL) {
+        name = slash + 1;
+    } else if (backslash != NULL) {
+        name = backslash + 1;
+    } else {
+        name = source_name;
     }
 
-    return dot;
+    if (name[0] == '\0' || strcmp(name, ".") == 0 || strcmp(name, "..") == 0) {
+        return NULL;
+    }
+
+    return name;
 }
 
 static int build_download_paths(char *final_path,
@@ -269,15 +279,22 @@ static int build_download_paths(char *final_path,
 {
     int final_len;
     int partial_len;
-    const char *extension = extension_from_name(source_name);
+    const char *download_name = download_name_from_source(source_name);
 
-    final_len = snprintf(final_path,
-                         final_path_size,
-                         "%s/download_%llu_%llu%s",
-                         destination_folder,
-                         (unsigned long long)size,
-                         (unsigned long long)hash,
-                         extension);
+    if (download_name != NULL) {
+        final_len = snprintf(final_path,
+                             final_path_size,
+                             "%s/%s",
+                             destination_folder,
+                             download_name);
+    } else {
+        final_len = snprintf(final_path,
+                             final_path_size,
+                             "%s/download_%llu_%llu",
+                             destination_folder,
+                             (unsigned long long)size,
+                             (unsigned long long)hash);
+    }
     if (final_len < 0 || final_len >= (int)final_path_size) {
         errno = ENAMETOOLONG;
         return -1;

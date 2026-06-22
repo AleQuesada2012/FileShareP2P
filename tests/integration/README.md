@@ -48,7 +48,7 @@ Verifies that a central filename search can feed Student 2's transfer request.
 
 Expected result: the central `find -s` output is cached by the REPL, `request`
 refreshes peers through identity lookup, and the transfer layer writes an
-identical downloaded `.txt` file into client 2's share folder.
+identical `hello-source.txt` file into client 2's share folder.
 
 ## `test_identity_request_transfer.sh`
 
@@ -65,7 +65,7 @@ transfer request.
 
 Expected result: `FIND` by `(S,H)` returns the owning peer, and the subsequent
 request downloads the exact file.
-The downloaded name keeps the original `.txt` extension.
+The downloaded name is `identity-source.txt`.
 
 ## `test_distributed_search.sh`
 
@@ -96,7 +96,7 @@ Verifies that a distributed search result can feed Student 2's transfer request.
 Expected result: distributed search populates the REPL result cache with the
 owning peer. The request path still attempts a server identity refresh first,
 then downloads the file through the existing transfer path.
-The downloaded name keeps the original `.txt` extension.
+The downloaded name is `archivo-p2p.txt`.
 
 ## `test_request_identity_refresh.sh`
 
@@ -112,7 +112,7 @@ search result.
 
 Expected result: `request` sends an identity `FIND` to the server, receives the
 owning peer, and downloads the exact file.
-The downloaded name keeps the original `.txt` extension.
+The downloaded name is `identity-refresh.txt`.
 
 ## `test_plain_find_fallback.sh`
 
@@ -161,8 +161,7 @@ Verifies the 3-client large-file split-transfer path with a real video file.
 - Compares the downloaded `.mkv` against the original video.
 
 Expected result: the requester rebuilds the large video from two peer ranges,
-keeps the `.mkv` extension in the downloaded filename, and the final bytes match
-the source exactly.
+keeps the original `.mkv` filename, and the final bytes match the source exactly.
 
 ## Remaining Manual Scenarios
 

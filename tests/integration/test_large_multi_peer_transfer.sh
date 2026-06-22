@@ -133,9 +133,9 @@ require_log "segment 1: bytes" "${ROOT_DIR}/client3.log"
 require_log "segment 2: bytes" "${ROOT_DIR}/client3.log"
 require_log "Downloaded file to" "${ROOT_DIR}/client3.log"
 
-DOWNLOADED=$(find "${ROOT_DIR}/peer3" -name "download_${SIZE}_${HASH}.mkv" -print | head -n 1)
-if [ -z "${DOWNLOADED}" ]; then
-    echo "Downloaded .mkv was not created" >&2
+DOWNLOADED="${ROOT_DIR}/peer3/${BASENAME}"
+if [ ! -f "${DOWNLOADED}" ]; then
+    echo "Downloaded .mkv kept no original name" >&2
     cat "${ROOT_DIR}/client3.log" >&2
     exit 1
 fi

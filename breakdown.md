@@ -172,7 +172,7 @@ Student 2 owns `client/`, `transfer/`, and `common/net.c`.
   byte ranges as `P2P_MSG_TRANSFER_DATA` frames.
 - `transfer/receiver.c` splits byte ranges across available peers, receives
   `P2P_MSG_TRANSFER_DATA` frames concurrently, and writes a completed
-  `download_<S>_<H><original-extension>` file into the share folder.
+  file using the original result filename into the share folder.
 - Integration coverage now verifies that one client can register a file, another
   client can find it through the central server, distributed search can find it
   through `find -d`, and `request <S> <H>` downloads it through the transfer

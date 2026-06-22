@@ -111,7 +111,7 @@ Current runtime status:
 | REPL `find -s <name>` | Sends a central-server `FIND` request and prints returned `(S, H, IP, port, name)` results |
 | REPL `find -d <name>` | Sends a distributed flood query to known neighbors and prints collected results |
 | REPL `find <name>` | Tries the server first; falls back to distributed search when the server fails or returns no results |
-| REPL `request <S> <H>` | Refreshes peers with central identity `FIND`, falls back to cached matching results if needed, downloads equal byte ranges from available peers, and writes `download_<S>_<H><original-extension>` |
+| REPL `request <S> <H>` | Refreshes peers with central identity `FIND`, falls back to cached matching results if needed, downloads equal byte ranges from available peers, and writes the file with its original result filename |
 | Incoming transfer listener | Starts on the client data port and accepts `TRANSFER_REQ` messages |
 | Transfer sender | Sends requested byte ranges as `TRANSFER_DATA` frames |
 | Transfer receiver / file assembly | Splits ranges across peers and assembles a completed file |
