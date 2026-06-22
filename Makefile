@@ -131,11 +131,15 @@ integration-test: all $(BUILD_DIR)/tests/get_local_ip
 	done
 
 docs:
-	@if command -v pdflatex >/dev/null 2>&1; then \
-		cd docs && pdflatex -interaction=nonstopmode main.tex; \
+	@if command -v pdflatex >/dev/null 2>&1 && command -v bibtex >/dev/null 2>&1; then \
+		cd docs && \
+		pdflatex -interaction=nonstopmode main.tex && \
+		bibtex main && \
+		pdflatex -interaction=nonstopmode main.tex && \
+		pdflatex -interaction=nonstopmode main.tex; \
 	else \
-		echo "pdflatex not found; install TeX Live/MacTeX to build docs."; \
+		echo "pdflatex and bibtex are required; install TeX Live/MacTeX to build docs."; \
 	fi
 
 clean:
-	rm -rf $(BUILD_DIR) docs/*.aux docs/*.log docs/*.out docs/*.pdf
+	rm -rf $(BUILD_DIR) docs/*.aux docs/*.bbl docs/*.blg docs/*.fdb_latexmk docs/*.fls docs/*.log docs/*.out docs/*.pdf docs/*.synctex.gz docs/*.toc
